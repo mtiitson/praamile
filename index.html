@@ -64,6 +64,15 @@
       padding: 2rem;
     }
     #splash.hidden { display: none; }
+    #splash-contact {
+      position: absolute;
+      bottom: 1rem;
+      font-size: 0.75rem;
+      color: var(--c-muted);
+      text-decoration: none;
+      cursor: pointer;
+    }
+    #splash-contact:hover { color: var(--c-navy); }
     #splash-icon { color: var(--c-navy); margin-bottom: 1.25rem; }
     #splash-title {
       font-size: 1.75rem;
@@ -389,6 +398,7 @@
     <div id="splash-title">Praamile</div>
     <div id="splash-desc">Kasutame su asukohta, et arvutada teekonnaaeg lähima sadamani.</div>
     <button id="start-btn" onclick="startApp()">Luba asukoht</button>
+    <a id="splash-contact">Kontakt</a>
   </div>
   <div id="status"></div>
   <div id="error" class="hidden"><span id="error-msg"></span></div>
@@ -417,9 +427,9 @@
 
     // ── Contact link (assembled in JS to avoid bot harvesting) ────────────────
     (function() {
-      const a = document.getElementById('contact-link');
       const addr = 'mattias' + '\u0040' + 'igak\u00fcla.ee';
-      a.href = 'mailto:' + addr;
+      document.getElementById('contact-link').href = 'mailto:' + addr;
+      document.getElementById('splash-contact').href = 'mailto:' + addr;
     })();
 
     // ── Buffer setting ────────────────────────────────────────────────────────

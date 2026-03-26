@@ -922,9 +922,18 @@
 
     // Skip splash if permission already granted
     if (navigator.permissions) {
+      // Chrome / Android / Firefox: query permission state directly
       navigator.permissions.query({ name: 'geolocation' }).then(result => {
         if (result.state === 'granted') startApp();
       });
+    } else if (navigator.geolocation) {
+      // iOS Safari: probe with a zero-timeout call — succeeds instantly if a
+      // cached position exists (i.e. permission was previously granted)
+      navigator.geolocation.getCurrentPosition(
+        () => startApp(),
+        () => { /* no cached position or not granted — splash stays */ },
+        { maximumAge: Infinity, timeout: 0 }
+      );
     }
   </script>
 

@@ -53,6 +53,45 @@
       padding: 0.75rem 1.25rem 3rem;
     }
 
+    #splash {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 0;
+      padding: 2rem;
+    }
+    #splash.hidden { display: none; }
+    #splash-icon { color: var(--c-navy); margin-bottom: 1.25rem; }
+    #splash-title {
+      font-size: 1.75rem;
+      font-weight: 800;
+      color: var(--c-navy);
+      letter-spacing: -0.03em;
+      margin-bottom: 0.5rem;
+    }
+    #splash-desc {
+      font-size: 0.95rem;
+      font-weight: 300;
+      color: var(--c-muted);
+      text-align: center;
+      line-height: 1.5;
+      max-width: 260px;
+      margin-bottom: 2rem;
+    }
+    #start-btn {
+      font-size: 1rem;
+      font-weight: 500;
+      color: #fff;
+      background: var(--c-navy);
+      border: none;
+      border-radius: 12px;
+      padding: 0.75rem 2rem;
+      cursor: pointer;
+    }
+
     #status {
       color: var(--c-muted);
       font-size: 1.25rem;
@@ -343,6 +382,14 @@
 </head>
 <body>
 
+  <div id="splash">
+    <div id="splash-icon">
+      <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="3"/><line x1="12" y1="22" x2="12" y2="8"/><path d="M5 12H2a10 10 0 0 0 20 0h-3"/></svg>
+    </div>
+    <div id="splash-title">Praamile</div>
+    <div id="splash-desc">Kasutame su asukohta, et arvutada teekonnaaeg lähima sadamani.</div>
+    <button id="start-btn" onclick="startApp()">Luba asukoht</button>
+  </div>
   <div id="status"></div>
   <div id="error" class="hidden"><span id="error-msg"></span></div>
   <div id="location-row" class="location-row" style="display:none"></div>
@@ -868,7 +915,10 @@
       );
     }
 
-    run();
+    function startApp() {
+      document.getElementById('splash').classList.add('hidden');
+      run();
+    }
   </script>
 
 </body>

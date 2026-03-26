@@ -532,7 +532,7 @@
 
     async function getDepartures(dir, dateIso) {
       const url = `https://www.praamid.ee/online/events`
-        + `?time-shift=1440&departure-date=${dateIso}&direction=${dir}`;
+        + `?time-shift=300&departure-date=${dateIso}&direction=${dir}`;
       const resp = await fetch(url);
       if (!resp.ok) throw new Error(`Praamide ajakava laadimine ebaõnnestus (${resp.status}).`);
       const data = await resp.json();

@@ -64,15 +64,6 @@
       padding: 2rem;
     }
     #splash.hidden { display: none; }
-    #splash-contact {
-      position: absolute;
-      bottom: 1rem;
-      font-size: 0.75rem;
-      color: var(--c-muted);
-      text-decoration: none;
-      cursor: pointer;
-    }
-    #splash-contact:hover { color: var(--c-navy); }
     #splash-icon { color: var(--c-navy); margin-bottom: 1.25rem; }
     #splash-title {
       font-size: 1.75rem;
@@ -376,6 +367,8 @@
   }
 
   #contact-link {
+    position: relative;
+    z-index: 10;
     font-size: 0.75rem;
     color: var(--c-muted);
     text-decoration: none;
@@ -398,7 +391,6 @@
     <div id="splash-title">Praamile</div>
     <div id="splash-desc">Kasutame su asukohta, et arvutada teekonnaaeg lähima sadamani.</div>
     <button id="start-btn" onclick="startApp()">Luba asukoht</button>
-    <a id="splash-contact">Kontakt</a>
   </div>
   <div id="status"></div>
   <div id="error" class="hidden"><span id="error-msg"></span></div>
@@ -429,7 +421,6 @@
     (function() {
       const addr = 'mattias' + '\u0040' + 'igak\u00fcla.ee';
       document.getElementById('contact-link').href = 'mailto:' + addr;
-      document.getElementById('splash-contact').href = 'mailto:' + addr;
     })();
 
     // ── Buffer setting ────────────────────────────────────────────────────────
@@ -871,6 +862,7 @@
         async (pos) => {
           const { latitude, longitude } = pos.coords;
           _cachedCoords = { latitude, longitude };
+          localStorage.setItem('locationGranted', '1');
           status.textContent = 'Arvutan teekonda...';
 
           getPlaceName(longitude, latitude).then(name => {
@@ -930,21 +922,8 @@
       run();
     }
 
-    // Skip splash if permission already granted
-    if (navigator.permissions) {
-      // Chrome / Android / Firefox: query permission state directly
-      navigator.permissions.query({ name: 'geolocation' }).then(result => {
-        if (result.state === 'granted') startApp();
-      });
-    } else if (navigator.geolocation) {
-      // iOS Safari: probe with a zero-timeout call — succeeds instantly if a
-      // cached position exists (i.e. permission was previously granted)
-      navigator.geolocation.getCurrentPosition(
-        () => startApp(),
-        () => { /* no cached position or not granted — splash stays */ },
-        { maximumAge: Infinity, timeout: 0 }
-      );
-    }
+    // Skip splash if we've successfully gotten location before
+    if (localStorage.getItem('locationGranted')) startApp();
   </script>
 
 </body>

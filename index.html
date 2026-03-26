@@ -79,7 +79,7 @@
       padding: 2rem;
       gap: 1.25rem;
     }
-    #error:empty { display: none; }
+    #error.hidden { display: none; }
     #retry-btn {
       font-size: 0.9rem;
       font-weight: 500;
@@ -344,7 +344,7 @@
 <body>
 
   <div id="status"></div>
-  <div id="error"><span id="error-msg"></span></div>
+  <div id="error" class="hidden"><span id="error-msg"></span></div>
   <div id="location-row" class="location-row" style="display:none"></div>
   <div id="results"></div>
   <div id="controls" style="display:none">
@@ -760,6 +760,7 @@
     function setError(msg) {
       const errEl = document.getElementById('error');
       document.getElementById('error-msg').textContent = msg;
+      errEl.classList.remove('hidden');
       if (!document.getElementById('retry-btn')) {
         const btn = document.createElement('button');
         btn.id = 'retry-btn';
@@ -770,6 +771,7 @@
     }
 
     function clearError() {
+      document.getElementById('error').classList.add('hidden');
       document.getElementById('error-msg').textContent = '';
       const btn = document.getElementById('retry-btn');
       if (btn) btn.remove();

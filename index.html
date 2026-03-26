@@ -1,0 +1,873 @@
+<!DOCTYPE html>
+<html lang="et">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Praamile – Praamiaegade jälgija</title>
+  <meta name="description" content="Näed kohe, millal lahkuda, et järgmine praam kinni saada. Reaalajas teekonnaaeg sinu asukohast sadamasse.">
+  <meta name="theme-color" content="#eef1f6">
+
+  <!-- Open Graph -->
+  <meta property="og:type"        content="website">
+  <meta property="og:url"         content="https://praamile.ee/">
+  <meta property="og:title"       content="Praamile">
+  <meta property="og:description" content="Näed kohe, millal lahkuda, et järgmine praam kinni saada.">
+  <meta property="og:image"       content="https://praamile.ee/og-image.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+
+  <!-- Twitter / X -->
+  <meta name="twitter:card"        content="summary_large_image">
+  <meta name="twitter:title"       content="Praamile">
+  <meta name="twitter:description" content="Näed kohe, millal lahkuda, et järgmine praam kinni saada.">
+  <meta name="twitter:image"       content="https://praamile.ee/og-image.png">
+
+  <!-- PWA -->
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="icon.png">
+
+  <!-- Favicon: anchor icon -->
+  <link rel="icon" type="image/svg+xml" href="icon.svg">
+  <style>
+    :root {
+      --c-bg:    #eef1f6;
+      --c-card:  #ffffff;
+      --c-navy:  #1e3a5f;
+      --c-muted: #8a94a6;
+      --c-green: #16a34a;
+      --c-yellow:#ca8a04;
+      --c-red:   #dc2626;
+      --c-blue:  #2563eb;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: var(--c-bg);
+      color: var(--c-navy);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 0.75rem 1.25rem 3rem;
+    }
+
+    #status {
+      color: var(--c-muted);
+      font-size: 1.25rem;
+      font-weight: 300;
+      position: fixed;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      pointer-events: none;
+    }
+    #status:empty { display: none; }
+    #error {
+      color: var(--c-red);
+      font-size: 1.25rem;
+      font-weight: 300;
+      position: fixed;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 2rem;
+      gap: 1.25rem;
+    }
+    #error:empty { display: none; }
+    #retry-btn {
+      font-size: 0.9rem;
+      font-weight: 500;
+      color: var(--c-muted);
+      background: none;
+      border: 1px solid #c8d0dc;
+      border-radius: 8px;
+      padding: 0.5rem 1.25rem;
+      cursor: pointer;
+    }
+    #retry-btn:hover { color: var(--c-navy); border-color: var(--c-navy); }
+
+    #results {
+      width: 100%;
+      max-width: 480px;
+      margin-top: 1rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1.25rem;
+    }
+
+    /* ── Port section ── */
+    .port-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 0.5rem;
+    }
+    .port-name-wrap { display: flex; align-items: center; gap: 7px; }
+    .port-name  { font-size: 1.1rem; font-weight: 700; color: var(--c-navy); }
+    .port-drive { font-size: 0.8rem; color: var(--c-muted); }
+
+    .star-btn {
+      background: none;
+      border: none;
+      cursor: pointer;
+      color: var(--c-muted);
+      padding: 0;
+      line-height: 1;
+      display: flex;
+      align-items: center;
+      transition: color 0.15s;
+    }
+    .star-btn:hover { color: var(--c-navy); }
+    .star-btn.starred { color: var(--c-blue); }
+
+    .deps-scroll-wrap { position: relative; }
+
+    .departures {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+      max-height: 330px;
+      overflow-y: auto;
+      overflow-x: hidden;
+      scrollbar-width: none;
+      -ms-overflow-style: none;
+      transition: max-height 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .departures.expanded  { max-height: 660px; }
+    .departures.collapsed { max-height: 130px; }
+    .departures::-webkit-scrollbar { display: none; }
+
+    .deps-fade-top,
+    .deps-fade-bot {
+      position: absolute;
+      left: 0; right: 0;
+      height: 70px;
+      pointer-events: none;
+      transition: opacity 0.15s;
+      z-index: 10;
+    }
+    .deps-fade-top { top: 0;    background: linear-gradient(to bottom, var(--c-bg), transparent); }
+    .deps-fade-bot { bottom: 0; background: linear-gradient(to bottom, transparent, var(--c-bg)); }
+
+    /* ── Departure card ── */
+    .dep-card {
+      background: var(--c-card);
+      border-radius: 6px;
+      box-shadow: 0 1px 4px rgba(0,0,0,.08), 0 0 0 1px rgba(0,0,0,.06);
+      display: flex;
+    }
+
+    .dep-strip { width: 5px; flex-shrink: 0; border-radius: 6px 0 0 6px; }
+    .dep-strip.green  { background: var(--c-green); }
+    .dep-strip.yellow { background: var(--c-yellow); }
+    .dep-strip.red    { background: var(--c-red); }
+    .dep-strip.grey   { background: var(--c-muted); }
+
+    .dep-body { flex: 1; padding: 14px 16px; }
+
+    .dep-mc-top {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      margin-bottom: 14px;
+    }
+    .micro-label {
+      font-size: 0.62rem;
+      text-transform: uppercase;
+      letter-spacing: .07em;
+      color: var(--c-muted);
+      margin-bottom: 2px;
+    }
+    .big-time {
+      font-size: 1.75rem;
+      font-weight: 800;
+      letter-spacing: -0.04em;
+      font-variant-numeric: tabular-nums;
+      line-height: 1;
+    }
+
+    /* ── Timeline ── */
+    .dep-tw {
+      position: relative;
+      margin-bottom: 24px;
+    }
+    .dep-tr {
+      height: 6px;
+      border-radius: 3px;
+      background: linear-gradient(to right, #c8d0dc 0%, var(--c-green) 66.7%, var(--c-yellow) 83.3%, var(--c-red) 91.7%);
+    }
+    .dep-tr.missed { background: #d1d5db; }
+
+    .dep-caret {
+      position: absolute;
+      right: 0;
+      top: -6px;
+      width: 2.5px;
+      height: 18px;
+      background: var(--c-red);
+      border-radius: 2px;
+      z-index: 4;
+    }
+    .dep-caret.missed-edge {
+      right: auto;
+      left: 0;
+      background: var(--c-muted);
+      transform: translateX(-50%);
+    }
+
+    .dep-pin {
+      position: absolute;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      width: 12px; height: 12px;
+      border-radius: 50%;
+      background: #fff;
+      z-index: 5;
+      box-shadow: 0 1px 4px rgba(0,0,0,.2);
+    }
+    .dep-pin.green  { border: 2.5px solid var(--c-green); }
+    .dep-pin.yellow { border: 2.5px solid var(--c-yellow); box-shadow: 0 0 0 2px rgba(202,138,4,.15), 0 1px 4px rgba(0,0,0,.2); }
+    .dep-pin.red    { border: 2.5px solid var(--c-red);    box-shadow: 0 0 0 2px rgba(220,38,38,.15), 0 1px 4px rgba(0,0,0,.2); }
+    .dep-pin.grey   { border: 2.5px solid var(--c-muted); }
+
+    .dep-pin-lbl {
+      position: absolute;
+      top: 13px;
+      font-size: 0.6rem;
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+      font-weight: 600;
+      transform: translateX(-50%);
+    }
+    .dep-pin-lbl.green  { color: var(--c-green); }
+    .dep-pin-lbl.yellow { color: var(--c-yellow); }
+    .dep-pin-lbl.red    { color: var(--c-red); }
+    .dep-pin-lbl.grey   { color: var(--c-muted); }
+
+    .dep-countdown {
+      font-size: 0.72rem;
+      color: var(--c-muted);
+      padding-bottom: 4px;
+    }
+
+    #controls {
+      width: 100%;
+      max-width: 480px;
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+      margin-top: 1.25rem;
+    }
+
+    .buffer-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .buffer-row-label {
+      font-size: 0.75rem;
+      color: var(--c-muted);
+      white-space: nowrap;
+    }
+    .buffer-opts {
+      display: flex;
+      gap: 4px;
+    }
+    .buffer-opts input[type=radio] { display: none; }
+    .buffer-opts label {
+      font-size: 0.75rem;
+      font-family: inherit;
+      color: var(--c-muted);
+      cursor: pointer;
+      padding: 3px 9px;
+      border-radius: 99px;
+      border: 1px solid transparent;
+      transition: color 0.15s, border-color 0.15s;
+    }
+    .buffer-opts input[type=radio]:checked + label {
+      color: var(--c-navy);
+      border-color: var(--c-navy);
+    }
+    .toggle-btn {
+      background: none;
+      border: none;
+      cursor: pointer;
+      color: var(--c-muted);
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 0.75rem;
+      font-family: inherit;
+      padding: 4px 0;
+      transition: color 0.15s;
+    }
+    .toggle-btn.active { color: var(--c-navy); }
+
+    .no-deps {
+      color: var(--c-muted);
+      font-size: 0.875rem;
+      font-style: italic;
+      padding: 4px 0;
+    }
+
+  .location-row {
+    font-size: 0.68rem;
+    color: var(--c-muted);
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 3px;
+    width: 100%;
+    max-width: 480px;
+  }
+
+  #contact-link {
+    font-size: 0.75rem;
+    color: var(--c-muted);
+    text-decoration: none;
+    display: block;
+    text-align: center;
+    margin-top: auto;
+    padding-top: 2rem;
+    padding-bottom: 1rem;
+  }
+  #contact-link:hover { color: var(--c-navy); }
+
+  </style>
+</head>
+<body>
+
+  <div id="status"></div>
+  <div id="error"><span id="error-msg"></span></div>
+  <div id="location-row" class="location-row" style="display:none"></div>
+  <div id="results"></div>
+  <div id="controls" style="display:none">
+    <button id="toggle-missed" class="toggle-btn" onclick="toggleMissed()"></button>
+    <div class="buffer-row">
+      <span class="buffer-row-label">Saabu enne praami:</span>
+      <div class="buffer-opts">
+        <input type="radio" name="buf" id="buf10" value="10" onchange="setBuffer(10)">
+        <label for="buf10">−10 min</label>
+        <input type="radio" name="buf" id="buf15" value="15" onchange="setBuffer(15)" checked>
+        <label for="buf15">−15 min</label>
+        <input type="radio" name="buf" id="buf20" value="20" onchange="setBuffer(20)">
+        <label for="buf20">−20 min</label>
+      </div>
+    </div>
+  </div>
+  <a id="contact-link">Kontakt</a>
+
+<script>
+    const MAPBOX_TOKEN = 'pk.eyJ1IjoibXRpaXRzb24iLCJhIjoiY21uNmhjaTR6MDRqNTJzc2JuaGt3enE3MyJ9.5mExSmnjLhuwlGaC1ViDkg';
+
+    function now() { return new Date(); }
+
+    // ── Contact link (assembled in JS to avoid bot harvesting) ────────────────
+    (function() {
+      const a = document.getElementById('contact-link');
+      const addr = 'mattias' + '\u0040' + 'igak\u00fcla.ee';
+      a.href = 'mailto:' + addr;
+    })();
+
+    // ── Buffer setting ────────────────────────────────────────────────────────
+    let bufferMins = parseInt(localStorage.getItem('bufferMins') || '15', 10);
+
+    function setBuffer(mins) {
+      bufferMins = mins;
+      localStorage.setItem('bufferMins', mins);
+      if (_cachedSelected && _cachedDeps) render(_cachedSelected, _cachedDeps);
+    }
+
+    // ── Missed toggle ─────────────────────────────────────────────────────────
+    let showMissed = localStorage.getItem('showMissed') === 'true';
+
+    const CHECK_SVG = (checked) => `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="3"/>${checked ? '<path d="M7 12.5l3.5 3.5 6.5-7"/>' : ''}</svg>`;
+
+    function updateToggleBtn() {
+      const btn = document.getElementById('toggle-missed');
+      btn.classList.toggle('active', showMissed);
+      btn.innerHTML = CHECK_SVG(showMissed) + ' Näita mahamagatud praame';
+    }
+
+    function toggleMissed() {
+      showMissed = !showMissed;
+      localStorage.setItem('showMissed', showMissed);
+      updateToggleBtn();
+      if (_cachedSelected && _cachedDeps) render(_cachedSelected, _cachedDeps);
+    }
+
+    // ── Star state ────────────────────────────────────────────────────────────
+    const STARRABLE    = new Set(['virtsu', 'rohukyla']);
+    const starredPorts = new Set(JSON.parse(localStorage.getItem('starredPorts') || '[]'));
+
+    const STAR_SVG = (filled) => `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${filled ? 2.5 : 1.75}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="5" r="3"/><line x1="12" y1="22" x2="12" y2="8"/><path d="M5 12H2a10 10 0 0 0 20 0h-3"/></svg>`;
+
+    const TICKET_SVG = (color) => `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2Z"/><path d="M13 5v2M13 17v2M13 11v2"/></svg>`;
+
+    function carAvailabilityColor(dep) {
+      const sv = dep.capacities?.sv;
+      if (sv === undefined || sv === null) return null;
+      if (sv === 0)      return 'var(--c-red)';
+      if (sv <= 10)      return 'var(--c-yellow)';
+      return 'var(--c-green)';
+    }
+
+    function toggleStar(key) {
+      if (starredPorts.has(key)) {
+        starredPorts.delete(key);
+      } else {
+        starredPorts.clear();
+        starredPorts.add(key);
+      }
+      localStorage.setItem('starredPorts', JSON.stringify([...starredPorts]));
+      if (_cachedSelected && _cachedDeps) render(_cachedSelected, _cachedDeps, true);
+    }
+
+    // ── Ports ─────────────────────────────────────────────────────────────────
+    const ALL_PORTS = [
+      { key: 'virtsu',    name: 'Virtsu sadam',    lon: 23.5148964, lat: 58.5718773, dir: 'VK' },
+      { key: 'kuivastu',  name: 'Kuivastu sadam',  lon: 23.4000,    lat: 58.5738,    dir: 'KV' },
+      { key: 'rohukyla',  name: 'Rohuküla sadam',  lon: 23.4228,    lat: 58.9065,    dir: 'RH' },
+      { key: 'heltermaa', name: 'Heltermaa sadam', lon: 23.0569,    lat: 58.8658,    dir: 'HR' },
+    ];
+
+    function selectPorts(ports) {
+      const get = key => ports.find(p => p.key === key);
+      const v = get('virtsu'), k = get('kuivastu');
+      const r = get('rohukyla'), h = get('heltermaa');
+      const onKuivastySide = k.driveSeconds !== null && (v.driveSeconds === null || k.driveSeconds < v.driveSeconds);
+      const onHeltermaSide = h.driveSeconds !== null && (r.driveSeconds === null || h.driveSeconds < r.driveSeconds);
+      if (onKuivastySide && !onHeltermaSide) return [k];
+      if (!onKuivastySide && onHeltermaSide) return [h];
+      return [v, r];
+    }
+
+    // ── Helpers ───────────────────────────────────────────────────────────────
+    function fmt(date) {
+      return `${String(date.getHours()).padStart(2,'0')}.${String(date.getMinutes()).padStart(2,'0')}`;
+    }
+    function fmtDrive(sec) {
+      if (sec === null) return '—';
+      const m = Math.round(sec / 60);
+      const h = Math.floor(m / 60);
+      return h > 0 ? `${h}h ${m % 60}min` : `${m}min`;
+    }
+
+    // ── API calls ─────────────────────────────────────────────────────────────
+    async function getDriveSeconds(userLon, userLat, port) {
+      const url = `https://api.mapbox.com/directions/v5/mapbox/driving/`
+        + `${userLon},${userLat};${port.lon},${port.lat}`
+        + `?access_token=${MAPBOX_TOKEN}`;
+      const resp = await fetch(url);
+      if (!resp.ok) {
+        if (resp.status === 401) throw new Error('Kaarditeenuse ligipääs keelatud. Ilma asukohata äpp ei tööta :(');
+        if (resp.status === 429) throw new Error('Kaarditeenuse päringute limiit täis. Proovi hiljem.');
+        throw new Error(`Kaarditeenuse viga (${resp.status}). Ilma asukohata äpp ei tööta :(`);
+      }
+      const data = await resp.json();
+      return data.routes?.[0]?.duration ?? null;
+    }
+
+    async function getPlaceName(lon, lat) {
+      const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${lon},${lat}.json`
+        + `?types=place,locality&limit=1&access_token=${MAPBOX_TOKEN}`;
+      try {
+        const data = await fetch(url).then(r => r.json());
+        return data.features?.[0]?.text ?? null;
+      } catch { return null; }
+    }
+
+    async function getDepartures(dir, dateIso) {
+      const url = `https://www.praamid.ee/online/events`
+        + `?time-shift=1440&departure-date=${dateIso}&direction=${dir}`;
+      const resp = await fetch(url);
+      if (!resp.ok) throw new Error(`Praamide ajakava laadimine ebaõnnestus (${resp.status}).`);
+      const data = await resp.json();
+      return data.items ?? [];
+    }
+
+    // ── Build one departure card ───────────────────────────────────────────────
+    function buildCard(dep, driveSeconds, dir) {
+      const t        = now();
+      const departAt = new Date(dep.dtstart);
+      const driveMs  = driveSeconds * 1000;
+      const bufMs    = bufferMins * 60 * 1000;
+
+      const comfLeave = new Date(departAt - driveMs - bufMs);
+      const critLeave = new Date(departAt - driveMs - bufMs / 2);
+      const lastLeave = new Date(departAt - driveMs);
+      const missed    = t > lastLeave;
+
+      // Urgency state
+      let state, stripClass;
+      if (missed) {
+        state = 'grey'; stripClass = 'grey';
+      } else if (t >= critLeave) {
+        state = 'red'; stripClass = 'red';
+      } else if (t >= comfLeave) {
+        state = 'yellow'; stripClass = 'yellow';
+      } else {
+        state = 'green'; stripClass = 'green';
+      }
+
+      // Far-future: show countdown instead of track (>90 min until need to leave)
+      const minsUntilLeave = (comfLeave - t) / 60000;
+      const farFuture = !missed && minsUntilLeave > 90;
+
+      // "lahku" (recommended leave time) — left column
+      let lahkuHtml;
+      if (missed) {
+        lahkuHtml = '<div></div>';
+      } else {
+        let lahkuText, lahkuColor;
+        if (state === 'red')    { lahkuText = 'kohe!'; lahkuColor = 'var(--c-red)'; }
+        else if (state === 'yellow') { lahkuText = 'kohe'; lahkuColor = 'var(--c-yellow)'; }
+        else                    { lahkuText = fmt(comfLeave); lahkuColor = 'var(--c-green)'; }
+        lahkuHtml = `<div>
+          <div class="micro-label">lahku</div>
+          <div class="big-time" style="color:${lahkuColor}">${lahkuText}</div>
+        </div>`;
+      }
+
+      // "praam" (ferry departure) — right column
+      const praamColor  = missed ? 'var(--c-muted)' : 'var(--c-navy)';
+      const ticketColor = missed ? null : carAvailabilityColor(dep);
+      const ticketUrl   = `https://www.praamid.ee/portal/ticket/departure?direction=${dir}`;
+      const ticketHtml  = ticketColor ? `<a href="${ticketUrl}" target="_blank" rel="noopener" style="line-height:0;display:inline-flex">${TICKET_SVG(ticketColor)}</a>` : '';
+      const praamHtml = `<div style="text-align:right">
+        <div class="micro-label">praam</div>
+        <div style="display:flex;align-items:center;justify-content:flex-end;gap:5px">
+          ${ticketHtml}
+          <a href="${ticketUrl}" target="_blank" rel="noopener" style="color:inherit;text-decoration:none"><div class="big-time" style="color:${praamColor}">${fmt(departAt)}</div></a>
+        </div>
+      </div>`;
+
+      // Track or countdown
+      let trackHtml;
+      if (farFuture) {
+        const totalMins = Math.floor((comfLeave - t) / 60000);
+        const hours = Math.floor(totalMins / 60);
+        const mins  = totalMins % 60;
+        const hStr  = hours === 1 ? '1 tund'   : `${hours} tundi`;
+        const mStr  = mins  === 1 ? '1 minut'  : `${mins} minutit`;
+        const countdown = hours > 0 ? `${hStr} ${mStr} lahkumiseni` : `${mStr} lahkumiseni`;
+        trackHtml = `<div class="dep-countdown">${countdown}</div>`;
+      } else {
+        // Pin position: for active ferries window ends at departure (t-60→t);
+        // for missed ferries window starts at departure (t→t+60)
+        const trackWindowMs     = 60 * 60 * 1000;
+        const trackArrivalStart = missed
+          ? departAt.getTime()
+          : departAt.getTime() - trackWindowMs;
+        const arrivalIfNow      = t.getTime() + driveMs;
+        const pinPct            = Math.max(0, Math.min(100,
+          (arrivalIfNow - trackArrivalStart) / trackWindowMs * 100
+        ));
+
+        const pinLabel = `praegu jõuaksid ${fmt(new Date(arrivalIfNow))}`;
+
+        // Clamp label transform so it doesn't overflow card edges
+        const lblTransform = pinPct < 15 ? 'translateX(0)'
+          : pinPct > 85               ? 'translateX(-100%)'
+          :                             'translateX(-50%)';
+
+        trackHtml = `
+          <div class="dep-tw">
+            <div class="dep-tr${missed ? ' missed' : ''}"></div>
+            <div class="dep-caret${missed ? ' missed-edge' : ''}"></div>
+            <div class="dep-pin ${state}" style="left:${pinPct}%"></div>
+            <div class="dep-pin-lbl ${state}" style="left:${pinPct}%;transform:${lblTransform}">${pinLabel}</div>
+          </div>`;
+      }
+
+      const card = document.createElement('div');
+      card.className = `dep-card${missed ? ' dep-missed' : ''}`;
+      card.innerHTML = `
+        <div class="dep-strip ${stripClass}"></div>
+        <div class="dep-body">
+          <div class="dep-mc-top">
+            ${lahkuHtml}
+            ${praamHtml}
+          </div>
+          ${trackHtml}
+        </div>
+      `;
+      return card;
+    }
+
+    // ── Build port section ────────────────────────────────────────────────────
+    function buildPortSection(port, deps, pinnedCount, totalPorts) {
+      const isStarred = starredPorts.has(port.key);
+
+      const starBtn = STARRABLE.has(port.key)
+        ? `<button class="star-btn${isStarred ? ' starred' : ''}" onclick="toggleStar('${port.key}')" title="${isStarred ? 'Eemalda' : 'Kinnita üles'}">${STAR_SVG(isStarred)}</button>`
+        : '';
+
+      const section = document.createElement('div');
+      section.className = 'port-section';
+      section.dataset.key = port.key;
+
+      const header = document.createElement('div');
+      header.className = 'port-header';
+      header.innerHTML = `
+        <div class="port-name-wrap">
+          ${starBtn}
+          <span class="port-name" onclick="toggleStar('${port.key}')" style="cursor:pointer">${port.name}</span>
+        </div>
+        <span class="port-drive">${fmtDrive(port.driveSeconds)} sõitu</span>
+      `;
+      section.appendChild(header);
+
+      const scrollWrap = document.createElement('div');
+      scrollWrap.className = 'deps-scroll-wrap';
+
+      const depsEl = document.createElement('div');
+      if (totalPorts === 1 || (pinnedCount === 1 && isStarred)) {
+        depsEl.className = 'departures expanded';
+      } else if (pinnedCount === 1 && !isStarred) {
+        depsEl.className = 'departures collapsed';
+      } else {
+        depsEl.className = 'departures';
+      }
+
+      if (deps.length === 0) {
+        depsEl.innerHTML = '<div class="no-deps">Täna rohkem väljumisi pole</div>';
+      } else {
+        deps.forEach(dep => {
+          if (port.driveSeconds !== null) {
+            const card = buildCard(dep, port.driveSeconds, port.dir);
+            if (!showMissed && card.classList.contains('dep-missed')) return;
+            depsEl.appendChild(card);
+          }
+        });
+      }
+
+      const fadeTop = document.createElement('div');
+      fadeTop.className = 'deps-fade-top';
+      fadeTop.style.opacity = '0';
+
+      const fadeBot = document.createElement('div');
+      fadeBot.className = 'deps-fade-bot';
+      fadeBot.style.opacity = '0';
+
+      function updateFades() {
+        const atTop = depsEl.scrollTop < 8;
+        const atBot = depsEl.scrollTop + depsEl.clientHeight >= depsEl.scrollHeight - 8;
+        fadeTop.style.opacity = atTop ? '0' : '1';
+        fadeBot.style.opacity = atBot ? '0' : '1';
+      }
+      depsEl.addEventListener('scroll', updateFades);
+      depsEl._updateFades = updateFades;
+
+      scrollWrap.appendChild(depsEl);
+      scrollWrap.appendChild(fadeTop);
+      scrollWrap.appendChild(fadeBot);
+      section.appendChild(scrollWrap);
+
+      return section;
+    }
+
+    // Called synchronously after section is in the DOM to avoid a painted frame at scrollTop=0
+    function initScroll(section, savedScrollTop) {
+      const depsEl = section.querySelector('.departures');
+      if (!depsEl) return;
+      if (savedScrollTop !== undefined) {
+        depsEl.scrollTop = savedScrollTop;
+      } else {
+        const cards = depsEl.querySelectorAll('.dep-card');
+        let anchorIdx = -1;
+        cards.forEach((card, i) => {
+          if (anchorIdx === -1 && !card.classList.contains('dep-missed')) anchorIdx = i;
+        });
+        if (anchorIdx > 0) {
+          depsEl.scrollTop = cards[anchorIdx - 1].offsetTop;
+        } else if (anchorIdx === -1 && cards.length > 0) {
+          depsEl.scrollTop = depsEl.scrollHeight;
+        }
+      }
+      depsEl._updateFades?.();
+    }
+
+    function render(selected, departureMap, animate = false) {
+      const sorted = [...selected].sort((a, b) =>
+        (starredPorts.has(b.key) ? 1 : 0) - (starredPorts.has(a.key) ? 1 : 0)
+      );
+      const results = document.getElementById('results');
+
+      // Preserve scroll positions across re-renders
+      const scrollPos = {};
+      results.querySelectorAll('.port-section[data-key]').forEach(el => {
+        const depsEl = el.querySelector('.departures');
+        if (depsEl) scrollPos[el.dataset.key] = depsEl.scrollTop;
+      });
+
+      // FLIP: snapshot positions before re-render
+      const before = {};
+      if (animate) {
+        results.querySelectorAll('.port-section[data-key]').forEach(el => {
+          before[el.dataset.key] = el.getBoundingClientRect().top;
+        });
+      }
+
+      results.innerHTML = '';
+      const locRow = document.getElementById('location-row');
+      if (_placeName) {
+        locRow.innerHTML = `<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s-8-4.5-8-11.8A8 8 0 0 1 12 2a8 8 0 0 1 8 8.2c0 7.3-8 11.8-8 11.8z"/><circle cx="12" cy="10" r="3"/></svg>${_placeName}`;
+        locRow.style.display = 'flex';
+      }
+      sorted.forEach((port) => {
+        const pinnedCount = selected.filter(p => starredPorts.has(p.key)).length;
+        const section = buildPortSection(port, departureMap[port.dir] ?? [], pinnedCount, selected.length);
+        results.appendChild(section);
+        initScroll(section, scrollPos[port.key]);
+      });
+
+      // FLIP: animate from old positions to new
+      if (animate) {
+        results.querySelectorAll('.port-section[data-key]').forEach(el => {
+          const delta = (before[el.dataset.key] ?? null) !== null
+            ? before[el.dataset.key] - el.getBoundingClientRect().top
+            : 0;
+          if (delta !== 0) {
+            el.style.transition = 'none';
+            el.style.transform  = `translateY(${delta}px)`;
+            requestAnimationFrame(() => requestAnimationFrame(() => {
+              el.style.transition = 'transform 0.35s cubic-bezier(0.4, 0, 0.2, 1)';
+              el.style.transform  = '';
+            }));
+          }
+        });
+      }
+    }
+
+    // ── Helpers ───────────────────────────────────────────────────────────────
+    function todayEET() {
+      const parts = new Intl.DateTimeFormat('et-EE', {
+        timeZone: 'Europe/Tallinn',
+        year: 'numeric', month: '2-digit', day: '2-digit'
+      }).formatToParts(new Date());
+      const v = {};
+      parts.forEach(p => v[p.type] = p.value);
+      return `${v.year}-${v.month}-${v.day}`;
+    }
+
+    function setError(msg) {
+      const errEl = document.getElementById('error');
+      document.getElementById('error-msg').textContent = msg;
+      if (!document.getElementById('retry-btn')) {
+        const btn = document.createElement('button');
+        btn.id = 'retry-btn';
+        btn.textContent = 'Proovi uuesti';
+        btn.onclick = run;
+        errEl.appendChild(btn);
+      }
+    }
+
+    function clearError() {
+      document.getElementById('error-msg').textContent = '';
+      const btn = document.getElementById('retry-btn');
+      if (btn) btn.remove();
+    }
+
+    // ── Main fetch + render ───────────────────────────────────────────────────
+    let _cachedSelected = null;
+    let _cachedDeps     = null;
+    let _placeName      = null;
+    let _cachedCoords   = null;
+    let _refreshTimer   = null;
+
+    async function refresh() {
+      if (!_cachedSelected) return;
+      try {
+        const dateIso   = todayEET();
+        const depArrays = await Promise.all(_cachedSelected.map(p => getDepartures(p.dir, dateIso)));
+        const depMap    = {};
+        _cachedSelected.forEach((p, i) => { depMap[p.dir] = depArrays[i]; });
+        _cachedDeps = depMap;
+        render(_cachedSelected, depMap);
+      } catch (_) { /* silent — show stale data rather than error on background refresh */ }
+    }
+
+    async function run() {
+      const status = document.getElementById('status');
+
+      status.textContent = '';
+      clearError();
+      if (_refreshTimer) { clearInterval(_refreshTimer); _refreshTimer = null; }
+
+      if (!navigator.geolocation) {
+        setError('Brauser ei toeta asukohateenust.');
+        return;
+      }
+
+      status.textContent = 'Otsin su asukohta...';
+
+      navigator.geolocation.getCurrentPosition(
+        async (pos) => {
+          const { latitude, longitude } = pos.coords;
+          _cachedCoords = { latitude, longitude };
+          status.textContent = 'Arvutan teekonda...';
+
+          getPlaceName(longitude, latitude).then(name => {
+            if (name) {
+              _placeName = name;
+              const locRow = document.getElementById('location-row');
+              locRow.innerHTML = `<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s-8-4.5-8-11.8A8 8 0 0 1 12 2a8 8 0 0 1 8 8.2c0 7.3-8 11.8-8 11.8z"/><circle cx="12" cy="10" r="3"/></svg>${_placeName}`;
+              locRow.style.display = 'flex';
+            }
+          });
+
+          try {
+            const driveTimes = await Promise.all(
+              ALL_PORTS.map(p => getDriveSeconds(longitude, latitude, p))
+            );
+            const ports    = ALL_PORTS.map((p, i) => ({ ...p, driveSeconds: driveTimes[i] }));
+            const selected = selectPorts(ports);
+
+            status.textContent = 'Otsin praamiaegu…';
+
+            const dateIso   = todayEET();
+            const depArrays = await Promise.all(selected.map(p => getDepartures(p.dir, dateIso)));
+            const depMap    = {};
+            selected.forEach((p, i) => { depMap[p.dir] = depArrays[i]; });
+
+            _cachedSelected = selected;
+            _cachedDeps     = depMap;
+
+            status.textContent = '';
+            document.getElementById('controls').style.display = '';
+            const bufRadio = document.querySelector(`input[name="buf"][value="${bufferMins}"]`);
+            if (bufRadio) bufRadio.checked = true;
+            updateToggleBtn();
+            render(selected, depMap);
+
+            _refreshTimer = setInterval(refresh, 60 * 1000);
+
+          } catch (e) {
+            setError(e.message || 'Midagi läks valesti. Proovi uuesti.');
+            status.textContent = '';
+          }
+        },
+        (err) => {
+          status.textContent = '';
+          switch (err.code) {
+            case err.PERMISSION_DENIED:    setError('Asukoha ligipääs keelatud. Ilma asukohata äpp ei tööta :('); break;
+            case err.POSITION_UNAVAILABLE: setError('Asukoht pole saadaval. Ilma asukohata äpp ei tööta :('); break;
+            case err.TIMEOUT:              setError('Asukoha päring aegus. Ilma asukohata äpp ei tööta :('); break;
+            default:                       setError('Tundmatu viga. Ilma asukohata äpp ei tööta :(');
+          }
+        }
+      );
+    }
+
+    run();
+  </script>
+
+</body>
+</html>

@@ -255,6 +255,27 @@
       border-radius: 2px;
       z-index: 4;
     }
+    .dep-flag {
+      position: absolute;
+      top: -11px;
+      width: 2px;
+      height: 12px;
+      background: var(--c-green);
+      border-radius: 1px;
+      z-index: 3;
+      transform: translateX(-50%);
+    }
+    .dep-flag::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 2px;
+      width: 0;
+      height: 0;
+      border-top: 2px solid transparent;
+      border-bottom: 5px solid transparent;
+      border-left: 7px solid var(--c-green);
+    }
     .dep-caret.missed-edge {
       right: auto;
       left: 0;
@@ -366,11 +387,13 @@
     color: var(--c-muted);
     display: flex;
     align-items: center;
-    justify-content: flex-end;
     gap: 3px;
-    width: 100%;
-    max-width: 480px;
   }
+
+  #day-switcher { font-size: 0.8rem; }
+  #day-switcher span { transition: color 0.15s; }
+  #day-switcher .active   { color: var(--c-navy); font-weight: 500; }
+  #day-switcher .inactive { color: var(--c-muted); font-weight: 400; }
 
   #contact-link {
     position: relative;
@@ -399,7 +422,12 @@
   </div>
   <div id="status"></div>
   <div id="error" class="hidden"><span id="error-msg"></span></div>
-  <div id="location-row" class="location-row" style="display:none"></div>
+  <div id="top-row" style="display:none;width:100%;max-width:480px;flex-direction:row;justify-content:space-between;align-items:center;margin-bottom:0.25rem">
+    <div id="day-switcher">
+      <span id="day-today" onclick="setDay('today')" style="cursor:pointer">Täna</span><span style="color:#c8d0dc;margin:0 7px;font-weight:300">|</span><span id="day-tomorrow" onclick="setDay('tomorrow')" style="cursor:pointer">Homme</span>
+    </div>
+    <div id="location-row" class="location-row"></div>
+  </div>
   <div id="results"></div>
   <div id="bottom-bar">
   <div id="controls" style="display:none">
@@ -447,8 +475,29 @@
     function setDebugLocation(idx) {
       _locationOverride = DEBUG_LOCATIONS[idx].coords;
       _placeName = null;
-      document.getElementById('location-row').style.display = 'none';
+      document.getElementById('location-row').innerHTML = '';
       run();
+    }
+
+    function updateDaySwitcher() {
+      const todayEl    = document.getElementById('day-today');
+      const tomorrowEl = document.getElementById('day-tomorrow');
+      if (!todayEl) return;
+      todayEl.className    = _selectedDay === 'today'    ? 'active' : 'inactive';
+      tomorrowEl.className = _selectedDay === 'tomorrow' ? 'active' : 'inactive';
+    }
+
+    function setDay(day) {
+      if (day === _selectedDay) return;
+      _selectedDay = day;
+      updateDaySwitcher();
+      if (_cachedSelected) {
+        if (_cachedDeps[day]) {
+          render(_cachedSelected, _cachedDeps[day]);
+        } else {
+          refresh();
+        }
+      }
     }
 
     function trackColorAt(pct, bufMins) {
@@ -480,7 +529,7 @@
     }
     function setTimeOffset(mins) {
       _timeOffsetMs = mins * 60 * 1000;
-      if (_cachedSelected && _cachedDeps) render(_cachedSelected, _cachedDeps);
+      if (_cachedSelected && _cachedDeps[_selectedDay]) render(_cachedSelected, _cachedDeps[_selectedDay]);
     }
 
     // ── Contact link (assembled in JS to avoid bot harvesting) ────────────────
@@ -495,7 +544,7 @@
     function setBuffer(mins) {
       bufferMins = mins;
       localStorage.setItem('bufferMins', mins);
-      if (_cachedSelected && _cachedDeps) render(_cachedSelected, _cachedDeps);
+      if (_cachedSelected && _cachedDeps[_selectedDay]) render(_cachedSelected, _cachedDeps[_selectedDay]);
     }
 
     // ── Missed toggle ─────────────────────────────────────────────────────────
@@ -513,7 +562,7 @@
       showMissed = !showMissed;
       localStorage.setItem('showMissed', showMissed);
       updateToggleBtn();
-      if (_cachedSelected && _cachedDeps) render(_cachedSelected, _cachedDeps);
+      if (_cachedSelected && _cachedDeps[_selectedDay]) render(_cachedSelected, _cachedDeps[_selectedDay]);
     }
 
     // ── Star state ────────────────────────────────────────────────────────────
@@ -541,7 +590,7 @@
         starredPorts.add(key);
       }
       localStorage.setItem('starredPorts', JSON.stringify([...starredPorts]));
-      if (_cachedSelected && _cachedDeps) render(_cachedSelected, _cachedDeps, true);
+      if (_cachedSelected && _cachedDeps[_selectedDay]) render(_cachedSelected, _cachedDeps[_selectedDay], true);
     }
 
     // ── Ports ─────────────────────────────────────────────────────────────────
@@ -586,8 +635,9 @@
         if (resp.status === 429) throw new Error('Kaarditeenuse päringute limiit täis. Proovi hiljem.');
         throw new Error(`Kaarditeenuse viga (${resp.status}). Ilma asukohata äpp ei tööta :(`);
       }
-      const data = await resp.json();
-      return data.routes?.[0]?.duration ?? null;
+      const data  = await resp.json();
+      const route = data.routes?.[0];
+      return route ? { duration: route.duration, duration_typical: route.duration_typical ?? route.duration } : null;
     }
 
     async function getPlaceName(lon, lat) {
@@ -609,7 +659,7 @@
     }
 
     // ── Build one departure card ───────────────────────────────────────────────
-    function buildCard(dep, driveSeconds, dir) {
+    function buildCard(dep, driveSeconds, dir, isTomorrow = false, driveSecondsTypical = null) {
       const t        = now();
       const departAt = new Date(dep.dtstart);
       const driveMs  = driveSeconds * 1000;
@@ -619,6 +669,32 @@
       const critLeave = new Date(departAt - driveMs - bufMs / 2);
       const lastLeave = new Date(departAt - driveMs);
       const missed    = t > lastLeave;
+
+      if (isTomorrow) {
+        const typicalMs    = (driveSecondsTypical ?? driveSeconds) * 1000;
+        const earlyLeave   = new Date(departAt - typicalMs - bufMs);
+        const startdiLabel = earlyLeave < comfLeave
+          ? `${fmt(earlyLeave)} – ${fmt(comfLeave)}`
+          : fmt(comfLeave);
+        const card = document.createElement('div');
+        card.className = 'dep-card';
+        card.innerHTML = `
+          <div class="dep-strip grey"></div>
+          <div class="dep-body">
+            <div class="dep-mc-top">
+              <div>
+                <div class="micro-label">stardi</div>
+                <div class="big-time" style="color:var(--c-green)">${startdiLabel}</div>
+              </div>
+              <div style="text-align:right">
+                <div class="micro-label">praam</div>
+                <div class="big-time" style="color:var(--c-navy)">${fmt(departAt)}</div>
+              </div>
+            </div>
+          </div>
+        `;
+        return card;
+      }
 
       // Urgency state
       let state, stripClass;
@@ -692,11 +768,17 @@
         const lblLeft = Math.max(10, Math.min(90, pinPct));
         const lblTransform = 'translateX(-50%)';
 
+        const comfArrival = departAt.getTime() - bufMs;
+        const flagPct     = Math.max(0, Math.min(100,
+          (comfArrival - trackArrivalStart) / trackWindowMs * 100
+        ));
+
         trackHtml = `
-          <div class="micro-label" style="margin-bottom:6px">praegu startides</div>
+          <div class="micro-label" style="margin-bottom:6px">praegu startides: </div>
           <div class="dep-tw">
             <div class="dep-tr${missed ? ' missed' : ''}" style="${missed ? '' : `background:${trackGradient(bufferMins)}`}"></div>
             <div class="dep-caret${missed ? ' missed-edge' : ''}"></div>
+            ${missed ? '' : `<div class="dep-flag" style="left:${flagPct}%"></div>`}
             <div class="dep-pin ${state}" style="left:${pinPct}%;${missed ? '' : `border-color:${trackColorAt(pinPct, bufferMins)};box-shadow:0 0 0 2px ${trackColorAt(pinPct, bufferMins).replace(')', ',.15)')},0 1px 4px rgba(0,0,0,.2)`}"></div>
             <div class="dep-pin-lbl ${state}" style="left:${lblLeft}%;transform:${lblTransform};${missed ? '' : `color:${trackColorAt(pinPct, bufferMins)}`}">${pinLabel}</div>
           </div>`;
@@ -741,7 +823,7 @@
           ${starBtn}
           <span class="port-name" onclick="toggleStar('${port.key}')" style="cursor:pointer">${port.name}</span>
         </div>
-        <span class="port-drive">${fmtDrive(port.driveSeconds)} sõitu</span>
+        <span class="port-drive" title="Sõiduaeg varieerub päeva jooksul">${_selectedDay === 'tomorrow' ? '~' : ''}${fmtDrive(port.driveSeconds)} sõitu</span>
       `;
       section.appendChild(header);
 
@@ -764,8 +846,10 @@
       } else {
         deps.forEach(dep => {
           if (port.driveSeconds !== null) {
-            const card = buildCard(dep, port.driveSeconds, port.dir);
-            if (!showMissed && card.classList.contains('dep-missed')) return;
+            const isTomorrow = _selectedDay === 'tomorrow';
+            if (isTomorrow && new Date(dep.dtstart).getHours() === 0) return;
+            const card = buildCard(dep, port.driveSeconds, port.dir, isTomorrow, port.driveSecondsTypical);
+            if (!isTomorrow && !showMissed && card.classList.contains('dep-missed')) return;
             depsEl.appendChild(card);
           }
         });
@@ -842,7 +926,6 @@
       const locRow = document.getElementById('location-row');
       if (_placeName) {
         locRow.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s-8-4.5-8-11.8A8 8 0 0 1 12 2a8 8 0 0 1 8 8.2c0 7.3-8 11.8-8 11.8z"/><circle cx="12" cy="10" r="3"/></svg>${_placeName}`;
-        locRow.style.display = 'flex';
       }
       sorted.forEach((port) => {
         const pinnedCount = selected.filter(p => starredPorts.has(p.key)).length;
@@ -910,7 +993,6 @@
           _placeName = name;
           const locRow = document.getElementById('location-row');
           locRow.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s-8-4.5-8-11.8A8 8 0 0 1 12 2a8 8 0 0 1 8 8.2c0 7.3-8 11.8-8 11.8z"/><circle cx="12" cy="10" r="3"/></svg>${_placeName}`;
-          locRow.style.display = 'flex';
         }
       });
 
@@ -918,24 +1000,30 @@
         const driveTimes = await Promise.all(
           ALL_PORTS.map(p => getDriveSeconds(longitude, latitude, p))
         );
-        const ports    = ALL_PORTS.map((p, i) => ({ ...p, driveSeconds: driveTimes[i] }));
+        const ports    = ALL_PORTS.map((p, i) => ({
+          ...p,
+          driveSeconds:        driveTimes[i]?.duration        ?? null,
+          driveSecondsTypical: driveTimes[i]?.duration_typical ?? null,
+        }));
         const selected = selectPorts(ports);
 
         status.textContent = 'Otsin praamiaegu…';
 
-        const dateIso   = todayEET();
+        const dateIso   = _selectedDay === 'tomorrow' ? tomorrowEET() : todayEET();
         const depArrays = await Promise.all(selected.map(p => getDepartures(p.dir, dateIso)));
         const depMap    = {};
         selected.forEach((p, i) => { depMap[p.dir] = depArrays[i]; });
 
         _cachedSelected = selected;
-        _cachedDeps     = depMap;
+        _cachedDeps[_selectedDay] = depMap;
 
         status.textContent = '';
         document.getElementById('controls').style.display = '';
+        document.getElementById('top-row').style.display = 'flex';
         const bufRadio = document.querySelector(`input[name="buf"][value="${bufferMins}"]`);
         if (bufRadio) bufRadio.checked = true;
         updateToggleBtn();
+        updateDaySwitcher();
         render(selected, depMap);
 
         _refreshTimer = setInterval(refresh, 60 * 1000);
@@ -947,7 +1035,7 @@
     }
 
     let _cachedSelected = null;
-    let _cachedDeps     = null;
+    let _cachedDeps     = {};
     let _placeName      = null;
     let _cachedCoords   = null;
     let _refreshTimer   = null;
@@ -972,11 +1060,11 @@
     async function refresh() {
       if (!_cachedSelected) return;
       try {
-        const dateIso   = todayEET();
+        const dateIso   = _selectedDay === 'tomorrow' ? tomorrowEET() : todayEET();
         const depArrays = await Promise.all(_cachedSelected.map(p => getDepartures(p.dir, dateIso)));
         const depMap    = {};
         _cachedSelected.forEach((p, i) => { depMap[p.dir] = depArrays[i]; });
-        _cachedDeps = depMap;
+        _cachedDeps[_selectedDay] = depMap;
         render(_cachedSelected, depMap);
       } catch (_) { /* silent — show stale data rather than error on background refresh */ }
     }

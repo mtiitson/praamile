@@ -43,6 +43,7 @@
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     body {
+      font-size: clamp(16px, 4.5vw, 20px);
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
       background: var(--c-bg);
       color: var(--c-navy);
@@ -361,7 +362,7 @@
     }
 
   .location-row {
-    font-size: 0.68rem;
+    font-size: 0.8rem;
     color: var(--c-muted);
     display: flex;
     align-items: center;
@@ -404,14 +405,16 @@
   <div id="controls" style="display:none">
     <button id="toggle-missed" class="toggle-btn" onclick="toggleMissed()"></button>
     <div class="buffer-row">
-      <span class="buffer-row-label">Saabu enne praami:</span>
+      <span class="buffer-row-label">Ajavaru sadamas:</span>
       <div class="buffer-opts">
+        <input type="radio" name="buf" id="buf5" value="5" onchange="setBuffer(5)">
+        <label for="buf5">5 min</label>
         <input type="radio" name="buf" id="buf10" value="10" onchange="setBuffer(10)">
-        <label for="buf10">−10 min</label>
+        <label for="buf10">10 min</label>
         <input type="radio" name="buf" id="buf15" value="15" onchange="setBuffer(15)" checked>
-        <label for="buf15">−15 min</label>
+        <label for="buf15">15 min</label>
         <input type="radio" name="buf" id="buf20" value="20" onchange="setBuffer(20)">
-        <label for="buf20">−20 min</label>
+        <label for="buf20">20 min</label>
       </div>
     </div>
     <div class="buffer-row" style="gap:8px;display:none">
@@ -459,18 +462,21 @@
       const red    = [220, 38,  38];
       const lerp = (a, b, t) => a.map((v, i) => Math.round(v + (b[i] - v) * t));
       const rgb  = c => `rgb(${c.join(',')})`;
-      if (pct <= p1) return rgb(lerp(grey,   green,  p1   === 0 ? 1 : pct / p1));
-      if (pct <= p2) return rgb(lerp(green,  yellow, (pct - p1) / (p2 - p1)));
-      if (pct <= p3) return rgb(lerp(yellow, red,    (pct - p2) / (p3 - p2)));
+      const pmid = (p2 + p3) / 2;
+      if (pct <= p1)   return rgb(lerp(grey,   green,  p1   === 0 ? 1 : pct / p1));
+      if (pct <= p2)   return rgb(green);
+      if (pct <= pmid) return rgb(lerp(green,  yellow, (pct - p2)   / (pmid - p2)));
+      if (pct <= p3)   return rgb(lerp(yellow, red,    (pct - pmid) / (p3 - pmid)));
       return rgb(red);
     }
 
     function trackGradient(bufMins) {
       const win = 60;
-      const p1 = ((win - bufMins - 10) / win * 100).toFixed(1); // grey → green
-      const p2 = ((win - bufMins)      / win * 100).toFixed(1); // green → yellow
-      const p3 = ((win - 5)            / win * 100).toFixed(1); // yellow → red
-      return `linear-gradient(to right, #c8d0dc 0%, var(--c-green) ${p1}%, var(--c-yellow) ${p2}%, var(--c-red) ${p3}%)`;
+      const p1   = ((win - bufMins - 10) / win * 100).toFixed(1); // grey → green
+      const p2   = ((win - bufMins)      / win * 100).toFixed(1); // green holds here (target)
+      const pmid = (((win - bufMins) + (win - 5)) / 2 / win * 100).toFixed(1); // green → yellow
+      const p3   = ((win - 5)            / win * 100).toFixed(1); // yellow → red
+      return `linear-gradient(to right, #c8d0dc 0%, var(--c-green) ${p1}%, var(--c-green) ${p2}%, var(--c-yellow) ${pmid}%, var(--c-red) ${p3}%)`;
     }
     function setTimeOffset(mins) {
       _timeOffsetMs = mins * 60 * 1000;
@@ -500,7 +506,7 @@
     function updateToggleBtn() {
       const btn = document.getElementById('toggle-missed');
       btn.classList.toggle('active', showMissed);
-      btn.innerHTML = CHECK_SVG(showMissed) + ' Näita mahamagatud praame';
+      btn.innerHTML = CHECK_SVG(showMissed) + ' Näita praame, millele ei jõua';
     }
 
     function toggleMissed() {
@@ -565,7 +571,7 @@
       if (sec === null) return '—';
       const m = Math.round(sec / 60);
       const h = Math.floor(m / 60);
-      return h > 0 ? `${h}h ${m % 60}min` : `${m}min`;
+      return h > 0 ? `${h}t ${m % 60}min` : `${m}min`;
     }
 
     // ── API calls ─────────────────────────────────────────────────────────────
@@ -834,7 +840,7 @@
       results.innerHTML = '';
       const locRow = document.getElementById('location-row');
       if (_placeName) {
-        locRow.innerHTML = `<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s-8-4.5-8-11.8A8 8 0 0 1 12 2a8 8 0 0 1 8 8.2c0 7.3-8 11.8-8 11.8z"/><circle cx="12" cy="10" r="3"/></svg>${_placeName}`;
+        locRow.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s-8-4.5-8-11.8A8 8 0 0 1 12 2a8 8 0 0 1 8 8.2c0 7.3-8 11.8-8 11.8z"/><circle cx="12" cy="10" r="3"/></svg>${_placeName}`;
         locRow.style.display = 'flex';
       }
       sorted.forEach((port) => {
@@ -902,7 +908,7 @@
         if (name) {
           _placeName = name;
           const locRow = document.getElementById('location-row');
-          locRow.innerHTML = `<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s-8-4.5-8-11.8A8 8 0 0 1 12 2a8 8 0 0 1 8 8.2c0 7.3-8 11.8-8 11.8z"/><circle cx="12" cy="10" r="3"/></svg>${_placeName}`;
+          locRow.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s-8-4.5-8-11.8A8 8 0 0 1 12 2a8 8 0 0 1 8 8.2c0 7.3-8 11.8-8 11.8z"/><circle cx="12" cy="10" r="3"/></svg>${_placeName}`;
           locRow.style.display = 'flex';
         }
       });

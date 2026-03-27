@@ -950,6 +950,23 @@
     let _placeName      = null;
     let _cachedCoords   = null;
     let _refreshTimer   = null;
+    let _selectedDay    = 'today';
+
+    function tomorrowEET() {
+      const tomorrow = new Date();
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      const parts = new Intl.DateTimeFormat('et-EE', {
+        timeZone: 'Europe/Tallinn',
+        year: 'numeric', month: '2-digit', day: '2-digit'
+      }).formatToParts(tomorrow);
+      const v = {};
+      parts.forEach(p => v[p.type] = p.value);
+      return `${v.year}-${v.month}-${v.day}`;
+    }
+
+    function tomorrowDepartAt() {
+      return tomorrowEET() + 'T05:00';
+    }
 
     async function refresh() {
       if (!_cachedSelected) return;

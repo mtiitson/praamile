@@ -575,10 +575,11 @@
     }
 
     // ── API calls ─────────────────────────────────────────────────────────────
-    async function getDriveSeconds(userLon, userLat, port) {
-      const url = `https://api.mapbox.com/directions/v5/mapbox/driving/`
+    async function getDriveSeconds(userLon, userLat, port, departAt = null) {
+      let url = `https://api.mapbox.com/directions/v5/mapbox/driving-traffic/`
         + `${userLon},${userLat};${port.lon},${port.lat}`
         + `?access_token=${MAPBOX_TOKEN}`;
+      if (departAt) url += `&depart_at=${encodeURIComponent(departAt)}`;
       const resp = await fetch(url);
       if (!resp.ok) {
         if (resp.status === 401) throw new Error('Kaarditeenuse ligipääs keelatud. Ilma asukohata äpp ei tööta :(');

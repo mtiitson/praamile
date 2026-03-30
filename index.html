@@ -57,6 +57,7 @@
     #splash {
       position: fixed;
       inset: 0;
+      z-index: 20;
       display: flex;
       flex-direction: column;
       align-items: center;
@@ -65,6 +66,7 @@
       padding: 2rem;
     }
     #splash.hidden { display: none; }
+    .hidden { display: none !important; }
     #splash-icon { color: var(--c-navy); margin-bottom: 1.25rem; }
     #splash-title {
       font-size: 1.75rem;
@@ -153,19 +155,7 @@
     .port-name  { font-size: 1.1rem; font-weight: 700; color: var(--c-navy); }
     .port-drive { font-size: 0.8rem; color: var(--c-muted); }
 
-    .star-btn {
-      background: none;
-      border: none;
-      cursor: pointer;
-      color: var(--c-muted);
-      padding: 0;
-      line-height: 1;
-      display: flex;
-      align-items: center;
-      transition: color 0.15s;
-    }
-    .star-btn:hover { color: var(--c-navy); }
-    .star-btn.starred { color: var(--c-blue); }
+
 
     .deps-scroll-wrap { position: relative; }
 
@@ -181,8 +171,6 @@
       transition: max-height 0.4s cubic-bezier(0.4, 0, 0.2, 1);
     }
     .departures.expanded      { max-height: 440px; }
-    .departures.collapsed     { max-height: 130px; }
-    .departures.fully-collapsed { max-height: 0; overflow: hidden; }
     .departures::-webkit-scrollbar { display: none; }
 
     .deps-fade-top,
@@ -335,6 +323,7 @@
       display: flex;
       align-items: center;
       gap: 10px;
+      flex-wrap: wrap;
     }
     .buffer-row-label {
       font-size: 0.75rem;
@@ -344,6 +333,7 @@
     .buffer-opts {
       display: flex;
       gap: 4px;
+      flex-wrap: nowrap;
     }
     .buffer-opts input[type=radio] { display: none; }
     .buffer-opts label {
@@ -390,10 +380,43 @@
     gap: 3px;
   }
 
-  #day-switcher { font-size: 0.8rem; }
-  #day-switcher span { transition: color 0.15s; }
-  #day-switcher .active   { color: var(--c-navy); font-weight: 500; }
-  #day-switcher .inactive { color: var(--c-muted); font-weight: 400; }
+  .dep-skeleton {
+    height: 70px;
+    background: #e5e7eb;
+    border-radius: 6px;
+    margin-bottom: 6px;
+    animation: skel-pulse 1.4s ease-in-out infinite;
+  }
+  @keyframes skel-pulse {
+    0%, 100% { opacity: 1; }
+    50%       { opacity: 0.45; }
+  }
+  .deps-error {
+    color: var(--c-red);
+    font-size: 0.85rem;
+    padding: 6px 0;
+  }
+
+  #day-switcher, #line-switcher { font-size: 0.8rem; }
+  #day-switcher span, #line-switcher span { transition: color 0.15s; }
+  #day-switcher .active,   #line-switcher .active   { color: var(--c-navy); font-weight: 500; }
+  #day-switcher .inactive, #line-switcher .inactive { color: var(--c-muted); font-weight: 400; }
+
+  .line-pick-btns {
+    display: flex;
+    gap: 1rem;
+    margin-top: 2rem;
+  }
+  .line-pick-btn {
+    font-size: 1rem;
+    font-weight: 500;
+    color: #fff;
+    background: var(--c-navy);
+    border: none;
+    border-radius: 12px;
+    padding: 0.75rem 2rem;
+    cursor: pointer;
+  }
 
   #contact-link {
     position: relative;
@@ -417,14 +440,28 @@
       <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="3"/><line x1="12" y1="22" x2="12" y2="8"/><path d="M5 12H2a10 10 0 0 0 20 0h-3"/></svg>
     </div>
     <div id="splash-title">Praamile</div>
-    <div id="splash-desc">Kasutame su asukohta, et arvutada teekonnaaeg lähima sadamani.</div>
-    <button id="start-btn" onclick="startApp()">Luba asukoht</button>
+    <div id="splash-line-pick">
+      <div id="splash-desc">Vali saar</div>
+      <div class="line-pick-btns">
+        <button class="line-pick-btn" onclick="pickLine('saaremaa')">Saaremaa</button>
+        <button class="line-pick-btn" onclick="pickLine('hiiumaa')">Hiiumaa</button>
+      </div>
+    </div>
+    <div id="splash-loc" class="hidden" style="display:flex;flex-direction:column;align-items:center;gap:0">
+      <div id="splash-desc">Kasutan su asukohta, et arvutada teekonnaaeg sadamani.</div>
+      <button id="start-btn" onclick="startApp()">Luba asukoht</button>
+    </div>
   </div>
   <div id="status"></div>
   <div id="error" class="hidden"><span id="error-msg"></span></div>
   <div id="top-row" style="display:none;width:100%;max-width:480px;flex-direction:row;justify-content:space-between;align-items:center;margin-bottom:0.25rem">
-    <div id="day-switcher">
-      <span id="day-today" onclick="setDay('today')" style="cursor:pointer">Täna</span><span style="color:#c8d0dc;margin:0 7px;font-weight:300">|</span><span id="day-tomorrow" onclick="setDay('tomorrow')" style="cursor:pointer">Homme</span>
+    <div style="display:flex;align-items:center;gap:14px">
+      <div id="line-switcher">
+        <span id="line-saaremaa" onclick="setLine('saaremaa')" style="cursor:pointer">Saaremaa</span><span style="color:#c8d0dc;margin:0 7px;font-weight:300">|</span><span id="line-hiiumaa" onclick="setLine('hiiumaa')" style="cursor:pointer">Hiiumaa</span>
+      </div>
+      <div id="day-switcher">
+        <span id="day-today" onclick="setDay('today')" style="cursor:pointer">Täna</span><span style="color:#c8d0dc;margin:0 7px;font-weight:300">|</span><span id="day-tomorrow" onclick="setDay('tomorrow')" style="cursor:pointer">Homme</span>
+      </div>
     </div>
     <div id="location-row" class="location-row"></div>
   </div>
@@ -463,6 +500,7 @@
 
 <script>
     const MAPBOX_TOKEN = 'pk.eyJ1IjoibXRpaXRzb24iLCJhIjoiY21uNmhjaTR6MDRqNTJzc2JuaGt3enE3MyJ9.5mExSmnjLhuwlGaC1ViDkg';
+    const GMAPS_TOKEN  = 'AIzaSyAoJEMXdmKbLDDslv-ozaU3k7JmjpJHRmo';
 
     let _timeOffsetMs = 0;
     function now() { return new Date(Date.now() + _timeOffsetMs); }
@@ -498,6 +536,35 @@
           refresh();
         }
       }
+    }
+
+    function updateLineSwitcher() {
+      const saEl = document.getElementById('line-saaremaa');
+      const hiEl = document.getElementById('line-hiiumaa');
+      if (!saEl) return;
+      saEl.className = _selectedLine === 'saaremaa' ? 'active' : 'inactive';
+      hiEl.className = _selectedLine === 'hiiumaa'  ? 'active' : 'inactive';
+    }
+
+    function pickLine(line) {
+      _selectedLine = line;
+      localStorage.setItem('selectedLine', line);
+      updateLineSwitcher();
+      document.getElementById('splash-line-pick').classList.add('hidden');
+      document.getElementById('splash-loc').classList.remove('hidden');
+      if (localStorage.getItem('locationGranted')) startApp();
+    }
+
+    function setLine(line) {
+      if (line === _selectedLine) return;
+      _selectedLine = line;
+      localStorage.setItem('selectedLine', line);
+      updateLineSwitcher();
+      _cachedSelected = null;
+      _cachedDeps     = {};
+      if (_refreshTimer)   { clearInterval(_refreshTimer);   _refreshTimer   = null; }
+      if (_sideCheckTimer) { clearInterval(_sideCheckTimer); _sideCheckTimer = null; }
+      if (_cachedCoords) runWithCoords(_cachedCoords.latitude, _cachedCoords.longitude);
     }
 
     function trackColorAt(pct, bufMins) {
@@ -566,11 +633,7 @@
     }
 
     // ── Star state ────────────────────────────────────────────────────────────
-    const STARRABLE    = new Set(['virtsu', 'rohukyla']);
     const ISLAND_PORTS = new Set(['kuivastu', 'heltermaa']);
-    const starredPorts = new Set(JSON.parse(localStorage.getItem('starredPorts') || '[]'));
-
-    const STAR_SVG = (filled) => `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${filled ? 2.5 : 1.75}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="5" r="3"/><line x1="12" y1="22" x2="12" y2="8"/><path d="M5 12H2a10 10 0 0 0 20 0h-3"/></svg>`;
 
     const TICKET_SVG = (color) => `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2Z"/><path d="M13 5v2M13 17v2M13 11v2"/></svg>`;
 
@@ -582,16 +645,6 @@
       return 'var(--c-green)';
     }
 
-    function toggleStar(key) {
-      if (starredPorts.has(key)) {
-        starredPorts.delete(key);
-      } else {
-        starredPorts.clear();
-        starredPorts.add(key);
-      }
-      localStorage.setItem('starredPorts', JSON.stringify([...starredPorts]));
-      if (_cachedSelected && _cachedDeps[_selectedDay]) render(_cachedSelected, _cachedDeps[_selectedDay], true);
-    }
 
     // ── Ports ─────────────────────────────────────────────────────────────────
     const ALL_PORTS = [
@@ -603,13 +656,15 @@
 
     function selectPorts(ports) {
       const get = key => ports.find(p => p.key === key);
-      const v = get('virtsu'), k = get('kuivastu');
-      const r = get('rohukyla'), h = get('heltermaa');
-      const onKuivastySide = k.driveSeconds !== null && (v.driveSeconds === null || k.driveSeconds < v.driveSeconds);
-      const onHeltermaSide = h.driveSeconds !== null && (r.driveSeconds === null || h.driveSeconds < r.driveSeconds);
-      if (onKuivastySide && !onHeltermaSide) return [k];
-      if (!onKuivastySide && onHeltermaSide) return [h];
-      return [v, r];
+      if (_selectedLine === 'hiiumaa') {
+        const r = get('rohukyla'), h = get('heltermaa');
+        const onIsland = h.driveSeconds !== null && (r.driveSeconds === null || h.driveSeconds < r.driveSeconds);
+        return onIsland ? [h] : [r];
+      } else {
+        const v = get('virtsu'), k = get('kuivastu');
+        const onIsland = k.driveSeconds !== null && (v.driveSeconds === null || k.driveSeconds < v.driveSeconds);
+        return onIsland ? [k] : [v];
+      }
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
@@ -624,20 +679,33 @@
     }
 
     // ── API calls ─────────────────────────────────────────────────────────────
-    async function getDriveSeconds(userLon, userLat, port, departAt = null) {
-      let url = `https://api.mapbox.com/directions/v5/mapbox/driving-traffic/`
-        + `${userLon},${userLat};${port.lon},${port.lat}`
-        + `?access_token=${MAPBOX_TOKEN}`;
-      if (departAt) url += `&depart_at=${encodeURIComponent(departAt)}`;
-      const resp = await fetch(url);
+    async function getDriveSeconds(userLon, userLat, port) {
+      const resp = await fetch('https://routes.googleapis.com/directions/v2:computeRoutes', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Goog-Api-Key': GMAPS_TOKEN,
+          'X-Goog-FieldMask': 'routes.legs.duration,routes.legs.staticDuration',
+        },
+        body: JSON.stringify({
+          origin:      { location: { latLng: { latitude: userLat,  longitude: userLon  } } },
+          destination: { location: { latLng: { latitude: port.lat, longitude: port.lon } } },
+          travelMode:        'DRIVE',
+          routingPreference: 'TRAFFIC_AWARE',
+        }),
+      });
       if (!resp.ok) {
-        if (resp.status === 401) throw new Error('Kaarditeenuse ligipääs keelatud. Ilma asukohata äpp ei tööta :(');
+        if (resp.status === 401 || resp.status === 403) throw new Error('Kaarditeenuse ligipääs keelatud. Ilma asukohata äpp ei tööta :(');
         if (resp.status === 429) throw new Error('Kaarditeenuse päringute limiit täis. Proovi hiljem.');
         throw new Error(`Kaarditeenuse viga (${resp.status}). Ilma asukohata äpp ei tööta :(`);
       }
-      const data  = await resp.json();
-      const route = data.routes?.[0];
-      return route ? { duration: route.duration, duration_typical: route.duration_typical ?? route.duration } : null;
+      const data = await resp.json();
+      const leg  = data.routes?.[0]?.legs?.[0];
+      if (!leg) return null;
+      return {
+        duration:         leg.duration       ? parseInt(leg.duration)       : null,
+        duration_typical: leg.staticDuration ? parseInt(leg.staticDuration) : null,
+      };
     }
 
     async function getPlaceName(lon, lat) {
@@ -671,11 +739,9 @@
       const missed    = t > lastLeave;
 
       if (isTomorrow) {
-        const typicalMs    = (driveSecondsTypical ?? driveSeconds) * 1000;
-        const earlyLeave   = new Date(departAt - typicalMs - bufMs);
-        const startdiLabel = earlyLeave < comfLeave
-          ? `${fmt(earlyLeave)} – ${fmt(comfLeave)}`
-          : fmt(comfLeave);
+        const typicalMs   = (driveSecondsTypical ?? driveSeconds) * 1000;
+        const staticLeave = new Date(departAt - typicalMs - bufMs);
+        const stardiLabel = fmt(staticLeave);
         const card = document.createElement('div');
         card.className = 'dep-card';
         card.innerHTML = `
@@ -684,7 +750,7 @@
             <div class="dep-mc-top">
               <div>
                 <div class="micro-label">stardi</div>
-                <div class="big-time" style="color:var(--c-green)">${startdiLabel}</div>
+                <div class="big-time" style="color:var(--c-green)">${stardiLabel}</div>
               </div>
               <div style="text-align:right">
                 <div class="micro-label">praam</div>
@@ -800,18 +866,7 @@
     }
 
     // ── Build port section ────────────────────────────────────────────────────
-    function buildPortSection(port, deps, pinnedCount, totalPorts) {
-      const isStarred = starredPorts.has(port.key);
-
-      const fullyCollapse = pinnedCount === 1 && !isStarred && !ISLAND_PORTS.has(port.key);
-      const showCaret = STARRABLE.has(port.key) && pinnedCount === 1;
-
-      const starBtn = STARRABLE.has(port.key)
-        ? `<button class="star-btn${isStarred ? ' starred' : ''}" onclick="toggleStar('${port.key}')" title="${isStarred ? 'Eemalda' : 'Kinnita üles'}">${STAR_SVG(isStarred)}</button>`
-        : ISLAND_PORTS.has(port.key)
-          ? `<span class="star-btn starred" style="cursor:default">${STAR_SVG(true)}</span>`
-          : '';
-
+    function buildPortSection(port, deps) {
       const section = document.createElement('div');
       section.className = 'port-section';
       section.dataset.key = port.key;
@@ -820,8 +875,7 @@
       header.className = 'port-header';
       header.innerHTML = `
         <div class="port-name-wrap">
-          ${starBtn}
-          <span class="port-name" onclick="toggleStar('${port.key}')" style="cursor:pointer">${port.name}</span>
+          <span class="port-name">${port.name}</span>
         </div>
         <span class="port-drive" title="Sõiduaeg varieerub päeva jooksul">${_selectedDay === 'tomorrow' ? '~' : ''}${fmtDrive(port.driveSeconds)} sõitu</span>
       `;
@@ -831,17 +885,15 @@
       scrollWrap.className = 'deps-scroll-wrap';
 
       const depsEl = document.createElement('div');
-      if (totalPorts === 1 || (pinnedCount === 1 && isStarred)) {
-        depsEl.className = 'departures expanded';
-      } else if (fullyCollapse) {
-        depsEl.className = 'departures fully-collapsed';
-      } else if (pinnedCount === 1 && !isStarred) {
-        depsEl.className = 'departures collapsed';
-      } else {
-        depsEl.className = 'departures';
-      }
+      depsEl.className = 'departures expanded';
 
-      if (deps.length === 0) {
+      if (deps === null) {
+        for (let i = 0; i < 3; i++) {
+          const skel = document.createElement('div');
+          skel.className = 'dep-skeleton';
+          depsEl.appendChild(skel);
+        }
+      } else if (deps.length === 0) {
         depsEl.innerHTML = '<div class="no-deps">Täna rohkem väljumisi pole</div>';
       } else {
         deps.forEach(dep => {
@@ -853,6 +905,9 @@
             depsEl.appendChild(card);
           }
         });
+        if (depsEl.children.length === 0) {
+          depsEl.innerHTML = '<div class="no-deps">Täna rohkem väljumisi pole</div>';
+        }
       }
 
       const fadeTop = document.createElement('div');
@@ -901,10 +956,14 @@
       depsEl._updateFades?.();
     }
 
+    function renderSkeletons(selected) {
+      const results = document.getElementById('results');
+      results.innerHTML = '';
+      selected.forEach(port => results.appendChild(buildPortSection(port, null)));
+    }
+
     function render(selected, departureMap, animate = false) {
-      const sorted = [...selected].sort((a, b) =>
-        (starredPorts.has(b.key) ? 1 : 0) - (starredPorts.has(a.key) ? 1 : 0)
-      );
+      const sorted = [...selected];
       const results = document.getElementById('results');
 
       // Preserve scroll positions across re-renders
@@ -928,8 +987,7 @@
         locRow.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s-8-4.5-8-11.8A8 8 0 0 1 12 2a8 8 0 0 1 8 8.2c0 7.3-8 11.8-8 11.8z"/><circle cx="12" cy="10" r="3"/></svg>${_placeName}`;
       }
       sorted.forEach((port) => {
-        const pinnedCount = selected.filter(p => starredPorts.has(p.key)).length;
-        const section = buildPortSection(port, departureMap[port.dir] ?? [], pinnedCount, selected.length);
+        const section = buildPortSection(port, departureMap[port.dir] ?? []);
         results.appendChild(section);
         initScroll(section, scrollPos[port.key]);
       });
@@ -986,37 +1044,46 @@
     // ── Main fetch + render ───────────────────────────────────────────────────
     async function runWithCoords(latitude, longitude) {
       const status = document.getElementById('status');
-      status.textContent = 'Arvutan teekonda...';
+      const statusTimer = setTimeout(() => { status.textContent = 'Arvutan teekonda...'; }, 150);
 
-      getPlaceName(longitude, latitude).then(name => {
-        if (name) {
-          _placeName = name;
-          const locRow = document.getElementById('location-row');
-          locRow.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s-8-4.5-8-11.8A8 8 0 0 1 12 2a8 8 0 0 1 8 8.2c0 7.3-8 11.8-8 11.8z"/><circle cx="12" cy="10" r="3"/></svg>${_placeName}`;
-        }
-      });
+      if (!_placeName || (Date.now() - _placeNameFetchedAt) > 60 * 1000) {
+        getPlaceName(longitude, latitude).then(name => {
+          if (name) {
+            _placeName = name;
+            _placeNameFetchedAt = Date.now();
+            const locRow = document.getElementById('location-row');
+            locRow.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s-8-4.5-8-11.8A8 8 0 0 1 12 2a8 8 0 0 1 8 8.2c0 7.3-8 11.8-8 11.8z"/><circle cx="12" cy="10" r="3"/></svg>${_placeName}`;
+          }
+        });
+      }
 
       try {
-        const driveTimes = await Promise.all(
-          ALL_PORTS.map(p => getDriveSeconds(longitude, latitude, p))
+        // ── Phase 1: drive times ──────────────────────────────────────────────
+        const linePorts  = ALL_PORTS.filter(p =>
+          _selectedLine === 'hiiumaa'
+            ? (p.key === 'rohukyla' || p.key === 'heltermaa')
+            : (p.key === 'virtsu'   || p.key === 'kuivastu')
         );
-        const ports    = ALL_PORTS.map((p, i) => ({
+        const cacheMaxAge = 60 * 1000;
+        const driveTimes = await Promise.all(linePorts.map(async p => {
+          const cached = _driveCache[p.key];
+          if (cached && (Date.now() - cached.fetchedAt) < cacheMaxAge) {
+            return { duration: cached.duration, duration_typical: cached.duration_typical };
+          }
+          const result = await getDriveSeconds(longitude, latitude, p);
+          if (result) _driveCache[p.key] = { ...result, fetchedAt: Date.now() };
+          return result;
+        }));
+        const ports    = linePorts.map((p, i) => ({
           ...p,
           driveSeconds:        driveTimes[i]?.duration        ?? null,
           driveSecondsTypical: driveTimes[i]?.duration_typical ?? null,
         }));
         const selected = selectPorts(ports);
-
-        status.textContent = 'Otsin praamiaegu…';
-
-        const dateIso   = _selectedDay === 'tomorrow' ? tomorrowEET() : todayEET();
-        const depArrays = await Promise.all(selected.map(p => getDepartures(p.dir, dateIso)));
-        const depMap    = {};
-        selected.forEach((p, i) => { depMap[p.dir] = depArrays[i]; });
-
         _cachedSelected = selected;
-        _cachedDeps[_selectedDay] = depMap;
 
+        // Drive times known — clear status timer, show UI
+        clearTimeout(statusTimer);
         status.textContent = '';
         document.getElementById('controls').style.display = '';
         document.getElementById('top-row').style.display = 'flex';
@@ -1024,11 +1091,31 @@
         if (bufRadio) bufRadio.checked = true;
         updateToggleBtn();
         updateDaySwitcher();
-        render(selected, depMap);
+        updateLineSwitcher();
 
-        _refreshTimer = setInterval(refresh, 60 * 1000);
+        // ── Phase 2: ferry departures ─────────────────────────────────────────
+        const skeletonTimer = setTimeout(() => renderSkeletons(selected), 150);
+        try {
+          const dateIso   = _selectedDay === 'tomorrow' ? tomorrowEET() : todayEET();
+          const depArrays = await Promise.all(selected.map(p => getDepartures(p.dir, dateIso)));
+          clearTimeout(skeletonTimer);
+          const depMap    = {};
+          selected.forEach((p, i) => { depMap[p.dir] = depArrays[i]; });
+          _cachedDeps[_selectedDay] = depMap;
+          render(selected, depMap);
+        } catch (e) {
+          clearTimeout(skeletonTimer);
+          renderSkeletons(selected);
+          document.getElementById('results').querySelectorAll('.departures').forEach(el => {
+            el.innerHTML = `<div class="deps-error">${e.message || 'Praamide ajakava laadimine ebaõnnestus.'}</div>`;
+          });
+        }
+
+        _refreshTimer   = setInterval(refresh,    60 * 1000);
+        _sideCheckTimer = setInterval(checkSide, 30 * 60 * 1000);
 
       } catch (e) {
+        clearTimeout(statusTimer);
         setError(e.message || 'Midagi läks valesti. Proovi uuesti.');
         status.textContent = '';
       }
@@ -1036,10 +1123,14 @@
 
     let _cachedSelected = null;
     let _cachedDeps     = {};
+    let _driveCache     = {}; // { portKey: { duration, duration_typical, fetchedAt } }
     let _placeName      = null;
+    let _placeNameFetchedAt = 0;
     let _cachedCoords   = null;
     let _refreshTimer   = null;
+    let _sideCheckTimer = null;
     let _selectedDay    = 'today';
+    let _selectedLine   = localStorage.getItem('selectedLine') || null;
 
     function tomorrowEET() {
       const tomorrow = new Date();
@@ -1058,8 +1149,27 @@
     }
 
     async function refresh() {
-      if (!_cachedSelected) return;
+      if (!_cachedSelected || !_cachedCoords) return;
       try {
+        // Refresh drive time for selected port only
+        for (const port of _cachedSelected) {
+          const result = await getDriveSeconds(_cachedCoords.longitude, _cachedCoords.latitude, port);
+          if (result) {
+            _driveCache[port.key] = { ...result, fetchedAt: Date.now() };
+            port.driveSeconds        = result.duration;
+            port.driveSecondsTypical = result.duration_typical;
+          }
+        }
+        // Refresh place name (respects its own 1-min cache)
+        getPlaceName(_cachedCoords.longitude, _cachedCoords.latitude).then(name => {
+          if (name && name !== _placeName) {
+            _placeName = name;
+            _placeNameFetchedAt = Date.now();
+            const locRow = document.getElementById('location-row');
+            if (locRow) locRow.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s-8-4.5-8-11.8A8 8 0 0 1 12 2a8 8 0 0 1 8 8.2c0 7.3-8 11.8-8 11.8z"/><circle cx="12" cy="10" r="3"/></svg>${_placeName}`;
+          }
+        });
+        // Refresh departures
         const dateIso   = _selectedDay === 'tomorrow' ? tomorrowEET() : todayEET();
         const depArrays = await Promise.all(_cachedSelected.map(p => getDepartures(p.dir, dateIso)));
         const depMap    = {};
@@ -1067,6 +1177,34 @@
         _cachedDeps[_selectedDay] = depMap;
         render(_cachedSelected, depMap);
       } catch (_) { /* silent — show stale data rather than error on background refresh */ }
+    }
+
+    async function checkSide() {
+      if (!_cachedCoords || !_cachedSelected) return;
+      try {
+        const linePorts = ALL_PORTS.filter(p =>
+          _selectedLine === 'hiiumaa'
+            ? (p.key === 'rohukyla' || p.key === 'heltermaa')
+            : (p.key === 'virtsu'   || p.key === 'kuivastu')
+        );
+        const driveTimes = await Promise.all(
+          linePorts.map(p => getDriveSeconds(_cachedCoords.longitude, _cachedCoords.latitude, p))
+        );
+        driveTimes.forEach((result, i) => {
+          if (result) _driveCache[linePorts[i].key] = { ...result, fetchedAt: Date.now() };
+        });
+        const ports = linePorts.map((p, i) => ({
+          ...p,
+          driveSeconds:        driveTimes[i]?.duration        ?? null,
+          driveSecondsTypical: driveTimes[i]?.duration_typical ?? null,
+        }));
+        const newSelected = selectPorts(ports);
+        if (newSelected[0].key !== _cachedSelected[0].key) {
+          _cachedSelected = newSelected;
+          _cachedDeps     = {};
+          refresh();
+        }
+      } catch (_) { /* silent */ }
     }
 
     async function run() {
@@ -1113,8 +1251,14 @@
       run();
     }
 
-    // Skip splash if we've successfully gotten location before
-    if (localStorage.getItem('locationGranted')) startApp();
+    // Init splash state
+    if (_selectedLine) {
+      // Line already chosen — show location step or skip splash entirely
+      document.getElementById('splash-line-pick').classList.add('hidden');
+      document.getElementById('splash-loc').classList.remove('hidden');
+      if (localStorage.getItem('locationGranted')) startApp();
+    }
+    // else: line picker is shown by default (splash-loc is hidden)
   </script>
 
 </body>

@@ -498,7 +498,6 @@
   <a id="contact-link">Kontakt</a>
 
 <script>
-    const MAPBOX_TOKEN = 'pk.eyJ1IjoibXRpaXRzb24iLCJhIjoiY21uNmhjaTR6MDRqNTJzc2JuaGt3enE3MyJ9.5mExSmnjLhuwlGaC1ViDkg';
     const GMAPS_TOKEN  = 'AIzaSyAoJEMXdmKbLDDslv-ozaU3k7JmjpJHRmo';
 
     let _timeOffsetMs = 0;
@@ -708,11 +707,17 @@
     }
 
     async function getPlaceName(lon, lat) {
-      const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${lon},${lat}.json`
-        + `?types=place,locality&limit=1&access_token=${MAPBOX_TOKEN}`;
+      const url = `https://maps.googleapis.com/maps/api/geocode/json`
+        + `?latlng=${lat},${lon}&key=${GMAPS_TOKEN}&language=et`;
       try {
         const data = await fetch(url).then(r => r.json());
-        return data.features?.[0]?.text ?? null;
+        if (!data.results?.length) return null;
+        const comps = data.results[0].address_components;
+        const get = type => comps.find(c => c.types.includes(type))?.long_name;
+        const route    = get('route');
+        const locality = get('locality') || get('sublocality') || get('administrative_area_level_3');
+        if (route && locality) return `${route}, ${locality}`;
+        return locality || data.results[0].formatted_address?.split(',').slice(0, 2).join(',') || null;
       } catch { return null; }
     }
 

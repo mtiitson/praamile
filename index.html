@@ -707,17 +707,15 @@
     }
 
     async function getPlaceName(lon, lat) {
-      const url = `https://maps.googleapis.com/maps/api/geocode/json`
-        + `?latlng=${lat},${lon}&key=${GMAPS_TOKEN}&language=et`;
+      const url = `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json`;
       try {
-        const data = await fetch(url).then(r => r.json());
-        if (!data.results?.length) return null;
-        const comps = data.results[0].address_components;
-        const get = type => comps.find(c => c.types.includes(type))?.long_name;
-        const route    = get('route');
-        const locality = get('locality') || get('sublocality') || get('administrative_area_level_3');
-        if (route && locality) return `${route}, ${locality}`;
-        return locality || data.results[0].formatted_address?.split(',').slice(0, 2).join(',') || null;
+        const data = await fetch(url, { headers: { 'Accept-Language': 'et' } }).then(r => r.json());
+        if (!data.address) return null;
+        const a = data.address;
+        const road     = a.road;
+        const locality = a.village || a.town || a.city || a.municipality;
+        if (road && locality) return `${road}, ${locality}`;
+        return locality || a.county || null;
       } catch { return null; }
     }
 

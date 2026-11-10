@@ -498,7 +498,7 @@
   <a id="contact-link">Kontakt</a>
 
 <script>
-    const GMAPS_TOKEN  = 'AIzaSyAoJEMXdmKbLDDslv-ozaU3k7JmjpJHRmo';
+    const GMAPS_TOKEN  = 'AIzaSyBn8COsS_yNeQTSZr9lAfY2Wui8Q6-swb0';
 
     let _timeOffsetMs = 0;
     function now() { return new Date(Date.now() + _timeOffsetMs); }
@@ -560,8 +560,7 @@
       updateLineSwitcher();
       _cachedSelected = null;
       _cachedDeps     = {};
-      if (_refreshTimer)   { clearInterval(_refreshTimer);   _refreshTimer   = null; }
-      if (_sideCheckTimer) { clearInterval(_sideCheckTimer); _sideCheckTimer = null; }
+      stopDepartureTimer();
       if (_cachedCoords) runWithCoords(_cachedCoords.latitude, _cachedCoords.longitude);
     }
 
@@ -652,17 +651,39 @@
       { key: 'heltermaa', name: 'Heltermaa sadam', lon: 23.044376,  lat: 58.864811,  dir: 'HR' },
     ];
 
-    function selectPorts(ports) {
-      const get = key => ports.find(p => p.key === key);
-      if (_selectedLine === 'hiiumaa') {
-        const r = get('rohukyla'), h = get('heltermaa');
-        const onIsland = h.driveSeconds !== null && (r.driveSeconds === null || h.driveSeconds < r.driveSeconds);
-        return onIsland ? [h] : [r];
-      } else {
-        const v = get('virtsu'), k = get('kuivastu');
-        const onIsland = k.driveSeconds !== null && (v.driveSeconds === null || k.driveSeconds < v.driveSeconds);
-        return onIsland ? [k] : [v];
-      }
+    // Island bounding boxes, from OSM. Which side of the strait you're on is a
+    // geometric question, so answer it from coordinates rather than paying for
+    // a drive-time comparison against both ports.
+    const ISLAND_BOXES = {
+      saaremaa: [
+        { latMin: 57.9054, latMax: 58.6423, lonMin: 21.8285, lonMax: 23.3286 }, // Saaremaa
+        { latMin: 58.5074, latMax: 58.6844, lonMin: 23.0664, lonMax: 23.4062 }, // Muhu
+      ],
+      hiiumaa: [
+        { latMin: 58.6869, latMax: 59.0935, lonMin: 22.0385, lonMax: 23.0694 }, // Hiiumaa
+      ],
+    };
+
+    function isOnIsland(lat, lon) {
+      return (ISLAND_BOXES[_selectedLine] ?? []).some(b =>
+        lat >= b.latMin && lat <= b.latMax && lon >= b.lonMin && lon <= b.lonMax
+      );
+    }
+
+    // The port on the user's side of the strait. Coordinates only, no API call.
+    // Mid-crossing you're outside every box and read as mainland.
+    function selectPort(coords) {
+      const linePorts = portsForLine();
+      const onIsland  = isOnIsland(coords.latitude, coords.longitude);
+      const port      = linePorts.find(p => ISLAND_PORTS.has(p.key) === onIsland);
+      return [port ?? linePorts[0]];
+    }
+
+    // Port object carrying its drive time, without mutating ALL_PORTS.
+    function withDrive(port, drive) {
+      return { ...port,
+        driveSeconds:        drive?.duration         ?? null,
+        driveSecondsTypical: drive?.duration_typical ?? null };
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
@@ -1043,6 +1064,52 @@
       if (btn) btn.remove();
     }
 
+    // ── Location + drive time helpers ─────────────────────────────────────────
+    function portsForLine() {
+      return ALL_PORTS.filter(p =>
+        _selectedLine === 'hiiumaa'
+          ? (p.key === 'rohukyla' || p.key === 'heltermaa')
+          : (p.key === 'virtsu'   || p.key === 'kuivastu')
+      );
+    }
+
+    // Cache-aware drive lookup. The TTL is what keeps repeated triggers from
+    // each costing a paid Routes call.
+    async function fetchDrive(coords, port) {
+      const cached = _driveCache[port.key];
+      if (cached && (Date.now() - cached.fetchedAt) < DRIVE_CACHE_MAX_AGE) {
+        return { duration: cached.duration, duration_typical: cached.duration_typical };
+      }
+      const result = await getDriveSeconds(coords.longitude, coords.latitude, port);
+      if (result) _driveCache[port.key] = { ...result, fetchedAt: Date.now() };
+      return result;
+    }
+
+    // One-shot position. Rejects instead of hanging, so callers can fall back
+    // to the last known coords.
+    function getFreshCoords() {
+      if (_locationOverride) return Promise.resolve(_locationOverride);
+      return new Promise((resolve, reject) => {
+        if (!navigator.geolocation) { reject(new Error('no geolocation')); return; }
+        navigator.geolocation.getCurrentPosition(
+          pos => resolve({ latitude: pos.coords.latitude, longitude: pos.coords.longitude }),
+          reject,
+          { timeout: 10000, maximumAge: 15000 }
+        );
+      });
+    }
+
+    function updatePlaceName(lon, lat) {
+      getPlaceName(lon, lat).then(name => {
+        if (name && name !== _placeName) {
+          _placeName = name;
+          _placeNameFetchedAt = Date.now();
+          const locRow = document.getElementById('location-row');
+          if (locRow) locRow.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s-8-4.5-8-11.8A8 8 0 0 1 12 2a8 8 0 0 1 8 8.2c0 7.3-8 11.8-8 11.8z"/><circle cx="12" cy="10" r="3"/></svg>${_placeName}`;
+        }
+      });
+    }
+
     // ── Main fetch + render ───────────────────────────────────────────────────
     async function runWithCoords(latitude, longitude) {
       const status = document.getElementById('status');
@@ -1061,28 +1128,11 @@
 
       try {
         // ── Phase 1: drive times ──────────────────────────────────────────────
-        const linePorts  = ALL_PORTS.filter(p =>
-          _selectedLine === 'hiiumaa'
-            ? (p.key === 'rohukyla' || p.key === 'heltermaa')
-            : (p.key === 'virtsu'   || p.key === 'kuivastu')
-        );
-        const cacheMaxAge = 60 * 1000;
-        const driveTimes = await Promise.all(linePorts.map(async p => {
-          const cached = _driveCache[p.key];
-          if (cached && (Date.now() - cached.fetchedAt) < cacheMaxAge) {
-            return { duration: cached.duration, duration_typical: cached.duration_typical };
-          }
-          const result = await getDriveSeconds(longitude, latitude, p);
-          if (result) _driveCache[p.key] = { ...result, fetchedAt: Date.now() };
-          return result;
-        }));
-        const ports    = linePorts.map((p, i) => ({
-          ...p,
-          driveSeconds:        driveTimes[i]?.duration        ?? null,
-          driveSecondsTypical: driveTimes[i]?.duration_typical ?? null,
-        }));
-        const selected = selectPorts(ports);
-        _cachedSelected = selected;
+        const coords   = { latitude, longitude };
+        const selected = selectPort(coords);
+        const drive    = await fetchDrive(coords, selected[0]);
+        _cachedSelected = [withDrive(selected[0], drive)];
+        const selected_ = _cachedSelected;
 
         // Drive times known — clear status timer, show UI
         clearTimeout(statusTimer);
@@ -1096,25 +1146,24 @@
         updateLineSwitcher();
 
         // ── Phase 2: ferry departures ─────────────────────────────────────────
-        const skeletonTimer = setTimeout(() => renderSkeletons(selected), 150);
+        const skeletonTimer = setTimeout(() => renderSkeletons(selected_), 150);
         try {
           const dateIso   = _selectedDay === 'tomorrow' ? tomorrowEET() : todayEET();
-          const depArrays = await Promise.all(selected.map(p => getDepartures(p.dir, dateIso)));
+          const depArrays = await Promise.all(selected_.map(p => getDepartures(p.dir, dateIso)));
           clearTimeout(skeletonTimer);
           const depMap    = {};
-          selected.forEach((p, i) => { depMap[p.dir] = depArrays[i]; });
+          selected_.forEach((p, i) => { depMap[p.dir] = depArrays[i]; });
           _cachedDeps[_selectedDay] = depMap;
-          render(selected, depMap);
+          render(selected_, depMap);
         } catch (e) {
           clearTimeout(skeletonTimer);
-          renderSkeletons(selected);
+          renderSkeletons(selected_);
           document.getElementById('results').querySelectorAll('.departures').forEach(el => {
             el.innerHTML = `<div class="deps-error">${e.message || 'Praamide ajakava laadimine ebaõnnestus.'}</div>`;
           });
         }
 
-        _refreshTimer   = setInterval(refresh,    60 * 1000);
-        _sideCheckTimer = setInterval(checkSide, 30 * 60 * 1000);
+        startDepartureTimer();
 
       } catch (e) {
         clearTimeout(statusTimer);
@@ -1130,7 +1179,9 @@
     let _placeNameFetchedAt = 0;
     let _cachedCoords   = null;
     let _refreshTimer   = null;
-    let _sideCheckTimer = null;
+    const DRIVE_CACHE_MAX_AGE = 60 * 1000;
+    let _driveRefreshInFlight = false;
+    let _lastActivateAt = 0;
     let _selectedDay    = 'today';
     let _selectedLine   = localStorage.getItem('selectedLine') || null;
 
@@ -1151,27 +1202,8 @@
     }
 
     async function refresh() {
-      if (!_cachedSelected || !_cachedCoords) return;
+      if (!_cachedSelected) return;
       try {
-        // Refresh drive time for selected port only
-        for (const port of _cachedSelected) {
-          const result = await getDriveSeconds(_cachedCoords.longitude, _cachedCoords.latitude, port);
-          if (result) {
-            _driveCache[port.key] = { ...result, fetchedAt: Date.now() };
-            port.driveSeconds        = result.duration;
-            port.driveSecondsTypical = result.duration_typical;
-          }
-        }
-        // Refresh place name (respects its own 1-min cache)
-        getPlaceName(_cachedCoords.longitude, _cachedCoords.latitude).then(name => {
-          if (name && name !== _placeName) {
-            _placeName = name;
-            _placeNameFetchedAt = Date.now();
-            const locRow = document.getElementById('location-row');
-            if (locRow) locRow.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s-8-4.5-8-11.8A8 8 0 0 1 12 2a8 8 0 0 1 8 8.2c0 7.3-8 11.8-8 11.8z"/><circle cx="12" cy="10" r="3"/></svg>${_placeName}`;
-          }
-        });
-        // Refresh departures
         const dateIso   = _selectedDay === 'tomorrow' ? tomorrowEET() : todayEET();
         const depArrays = await Promise.all(_cachedSelected.map(p => getDepartures(p.dir, dateIso)));
         const depMap    = {};
@@ -1181,40 +1213,78 @@
       } catch (_) { /* silent — show stale data rather than error on background refresh */ }
     }
 
-    async function checkSide() {
-      if (!_cachedCoords || !_cachedSelected) return;
+    // Re-locate, then re-price the drive from where we actually are now. Also
+    // re-picks the port, since which side of the strait you're on falls out of
+    // the same drive times. Focus-triggered only; DRIVE_CACHE_MAX_AGE throttles
+    // it, so rapid focus events are free no-ops.
+    async function refreshDriveTimes() {
+      if (!_cachedSelected || !_cachedCoords || _driveRefreshInFlight) return;
+      const current = _cachedSelected[0];
+      const cached  = _driveCache[current.key];
+      if (cached && (Date.now() - cached.fetchedAt) < DRIVE_CACHE_MAX_AGE) return;
+
+      _driveRefreshInFlight = true;
       try {
-        const linePorts = ALL_PORTS.filter(p =>
-          _selectedLine === 'hiiumaa'
-            ? (p.key === 'rohukyla' || p.key === 'heltermaa')
-            : (p.key === 'virtsu'   || p.key === 'kuivastu')
-        );
-        const driveTimes = await Promise.all(
-          linePorts.map(p => getDriveSeconds(_cachedCoords.longitude, _cachedCoords.latitude, p))
-        );
-        driveTimes.forEach((result, i) => {
-          if (result) _driveCache[linePorts[i].key] = { ...result, fetchedAt: Date.now() };
-        });
-        const ports = linePorts.map((p, i) => ({
-          ...p,
-          driveSeconds:        driveTimes[i]?.duration        ?? null,
-          driveSecondsTypical: driveTimes[i]?.duration_typical ?? null,
-        }));
-        const newSelected = selectPorts(ports);
-        if (newSelected[0].key !== _cachedSelected[0].key) {
-          _cachedSelected = newSelected;
-          _cachedDeps     = {};
-          refresh();
+        let coords;
+        try {
+          coords = await getFreshCoords();
+        } catch (_) {
+          return; // keep the last known position; don't pay for a stale origin
         }
-      } catch (_) { /* silent */ }
+        _cachedCoords = coords;
+        updatePlaceName(coords.longitude, coords.latitude);
+        const newSelected = selectPort(coords);
+        const sideChanged = newSelected[0].key !== current.key;
+        const drive       = await fetchDrive(coords, newSelected[0]);
+        _cachedSelected   = [withDrive(newSelected[0], drive)];
+        if (sideChanged) {
+          _cachedDeps = {};
+          await refresh();
+        } else {
+          const depMap = _cachedDeps[_selectedDay];
+          if (depMap) render(_cachedSelected, depMap);
+        }
+      } catch (_) { /* silent */
+      } finally {
+        _driveRefreshInFlight = false;
+      }
     }
+
+    // ── Activity gating ──────────────────────────────────────────────────────
+    function isActive() {
+      return document.visibilityState === 'visible' && document.hasFocus();
+    }
+
+    function startDepartureTimer() {
+      if (_refreshTimer) return;
+      _refreshTimer = setInterval(refresh, 60 * 1000);
+    }
+
+    function stopDepartureTimer() {
+      if (_refreshTimer) { clearInterval(_refreshTimer); _refreshTimer = null; }
+    }
+
+    function onActivate() {
+      if (!isActive() || !_cachedSelected) return;
+      if (Date.now() - _lastActivateAt < 1000) return; // visibilitychange + focus fire as a pair
+      _lastActivateAt = Date.now();
+      startDepartureTimer();
+      refresh();
+      refreshDriveTimes();
+    }
+
+    document.addEventListener('visibilitychange', () => {
+      if (isActive()) onActivate(); else stopDepartureTimer();
+    });
+    window.addEventListener('focus', onActivate);
+    window.addEventListener('blur',  stopDepartureTimer);
 
     async function run() {
       const status = document.getElementById('status');
 
       status.textContent = '';
       clearError();
-      if (_refreshTimer) { clearInterval(_refreshTimer); _refreshTimer = null; }
+      stopDepartureTimer();
 
       if (_locationOverride) {
         await runWithCoords(_locationOverride.latitude, _locationOverride.longitude);

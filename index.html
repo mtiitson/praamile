@@ -1065,6 +1065,12 @@
     }
 
     // ── Location + drive time helpers ─────────────────────────────────────────
+    // Declared here, not with the other state below: _driveCache's initialiser
+    // calls loadDriveCache(), so these must already be initialised by then.
+    const DRIVE_CACHE_MAX_AGE = 60 * 1000;
+    const DRIVE_CACHE_MAX_DIST_M = 200;   // moved further than this? re-ask
+    const DRIVE_STORE_KEY = 'driveCache';
+
     function portsForLine() {
       return ALL_PORTS.filter(p =>
         _selectedLine === 'hiiumaa'
@@ -1073,15 +1079,45 @@
       );
     }
 
-    // Cache-aware drive lookup. The TTL is what keeps repeated triggers from
-    // each costing a paid Routes call.
+    // Metres between two fixes. Equirectangular is plenty at this scale.
+    function distanceM(a, b) {
+      const dLat = (a.latitude  - b.latitude)  * 111320;
+      const dLon = (a.longitude - b.longitude) * 111320 * Math.cos(a.latitude * Math.PI / 180);
+      return Math.hypot(dLat, dLon);
+    }
+
+    // The cache is persisted, so a reload (or pull-to-refresh) does not spend a
+    // paid call. It survives the page, so the position it was measured from has
+    // to match too, otherwise you would see the estimate from where you were.
+    function driveCacheHit(cached, coords) {
+      if (!cached || typeof cached.lat !== 'number') return false;
+      const age = Date.now() - cached.fetchedAt;
+      if (age < 0 || age >= DRIVE_CACHE_MAX_AGE) return false;
+      return distanceM(coords, { latitude: cached.lat, longitude: cached.lon }) <= DRIVE_CACHE_MAX_DIST_M;
+    }
+
+    function loadDriveCache() {
+      try { return JSON.parse(localStorage.getItem(DRIVE_STORE_KEY)) || {}; }
+      catch (_) { return {}; }
+    }
+
+    function saveDriveCache() {
+      try { localStorage.setItem(DRIVE_STORE_KEY, JSON.stringify(_driveCache)); }
+      catch (_) { /* private mode, or full — cache just stays in memory */ }
+    }
+
+    // Cache-aware drive lookup. Every paid call goes through here.
     async function fetchDrive(coords, port) {
       const cached = _driveCache[port.key];
-      if (cached && (Date.now() - cached.fetchedAt) < DRIVE_CACHE_MAX_AGE) {
+      if (driveCacheHit(cached, coords)) {
         return { duration: cached.duration, duration_typical: cached.duration_typical };
       }
       const result = await getDriveSeconds(coords.longitude, coords.latitude, port);
-      if (result) _driveCache[port.key] = { ...result, fetchedAt: Date.now() };
+      if (result) {
+        _driveCache[port.key] = { ...result, fetchedAt: Date.now(),
+          lat: coords.latitude, lon: coords.longitude };
+        saveDriveCache();
+      }
       return result;
     }
 
@@ -1174,12 +1210,11 @@
 
     let _cachedSelected = null;
     let _cachedDeps     = {};
-    let _driveCache     = {}; // { portKey: { duration, duration_typical, fetchedAt } }
+    let _driveCache     = loadDriveCache(); // { portKey: { duration, duration_typical, fetchedAt, lat, lon } }
     let _placeName      = null;
     let _placeNameFetchedAt = 0;
     let _cachedCoords   = null;
     let _refreshTimer   = null;
-    const DRIVE_CACHE_MAX_AGE = 60 * 1000;
     let _driveRefreshInFlight = false;
     let _lastActivateAt = 0;
     let _selectedDay    = 'today';

@@ -32,31 +32,24 @@ const mkEl=()=>new Proxy(function(){},{
   apply(){return mkEl()}
 });
 
-const listeners={};
-const addL=(o)=>(ev,fn)=>{(listeners[ev]??=[]).push(fn)};
-let visibility='visible', focused=true;
-const document={
-  getElementById:()=>mkEl(), createElement:()=>mkEl(), querySelector:()=>mkEl(),
-  querySelectorAll:()=>[], addEventListener:addL(), body:mkEl(),
-  get visibilityState(){return visibility}, hasFocus:()=>focused,
-  documentElement:mkEl(),
-};
-const window={addEventListener:addL(), matchMedia:()=>({matches:false,addEventListener(){}}),
-  location:{href:'http://localhost/'}, scrollTo(){}, innerWidth:400};
+// ── shared "world" state, persisting across reloads ──────────────────────────
 const LINE=process.env.LINE||'saaremaa';
-const store={selectedLine:LINE, locationGranted:'1'};
+const store={selectedLine:LINE, locationGranted:'1'};          // = localStorage
 const localStorage={getItem:k=>store[k]??null,setItem:(k,v)=>{store[k]=String(v)},removeItem:k=>{delete store[k]}};
 
-// ── controllable position ────────────────────────────────────────────────────
-let POS={latitude:59.4370,longitude:24.7536}; // Tallinn
-let geoCalls=0;
-const navigator={geolocation:{getCurrentPosition(ok,err,opts){geoCalls++;setTimeout(()=>ok({coords:{...POS}}),0)}}};
+let visibility='visible', focused=true;
+let POS={latitude:59.4370,longitude:24.7536};                  // Tallinn
+let geoCalls=0, geoFails=false;
+const navigator={geolocation:{getCurrentPosition(ok,err){
+  geoCalls++;
+  if(geoFails) setTimeout(()=>err({code:3}),0);
+  else         setTimeout(()=>ok({coords:{...POS}}),0);
+}}};
 
-// ── fetch stub + call counting ───────────────────────────────────────────────
 const calls={routes:0,nominatim:0,praamid:0};
 const routeOrigins=[];
 let driveSecs=5400;
-let perPort=null;  // {kuivastu:sec, virtsu:sec} overrides driveSecs
+let perPort=null;
 const portOf=(ll)=>Math.abs(ll.longitude-23.389240)<0.01?'kuivastu':
                    Math.abs(ll.longitude-23.511273)<0.01?'virtsu':
                    Math.abs(ll.longitude-23.044376)<0.01?'heltermaa':'rohukyla';
@@ -77,7 +70,6 @@ function fetch(url,opts){
   return json({});
 }
 
-// ── time control ─────────────────────────────────────────────────────────────
 let clockOffset=0;
 const RealDate=Date;
 class FakeDate extends RealDate{
@@ -85,28 +77,46 @@ class FakeDate extends RealDate{
   static now(){return RealDate.now()+clockOffset}
 }
 
-// ── timers: capture intervals instead of running them ────────────────────────
+// ── boot: one page load. Re-callable, which is what a reload (F5) is. ────────
+let listeners, sandbox, _sp;
 const intervals=new Map(); let ivId=1;
-const sandbox={document,window,navigator,localStorage,fetch,Date:FakeDate,
-  setTimeout,clearTimeout,Promise,console,Intl,JSON,Math,
-  setInterval:(fn,ms)=>{const id=ivId++;intervals.set(id,{fn,ms});return id},
-  clearInterval:(id)=>{intervals.delete(id)},
-};
-sandbox.globalThis=sandbox; sandbox.self=sandbox;
-vm.createContext(sandbox);
-vm.runInContext(code,sandbox);
-sandbox.__traceSetError = true;
-const _se = sandbox.setError;
-sandbox.setError = (m)=>{ console.log('   [setError] '+m); return _se(m); };
-const _oa = sandbox.onActivate;
-sandbox.onActivate = ()=>{ console.log('   [onActivate fired]'); return _oa(); };
-const _sp = sandbox.selectPort;
-sandbox.selectPort = (c)=>{ const r=_sp(c); sandbox.__lastSelected=r[0].key; console.log('   [selectPort] '+c.latitude.toFixed(3)+','+c.longitude.toFixed(3)+' -> '+r[0].key); return r; };
-const _rf = sandbox.refresh;
-sandbox.refresh = async()=>{ console.log('   [refresh -> departures]'); return _rf(); };
+function boot(){
+  intervals.clear();
+  listeners={};
+  const addL=()=>(ev,fn)=>{(listeners[ev]??=[]).push(fn)};
+  const document={
+    getElementById:()=>mkEl(), createElement:()=>mkEl(), querySelector:()=>mkEl(),
+    querySelectorAll:()=>[], addEventListener:addL(), body:mkEl(),
+    get visibilityState(){return visibility}, hasFocus:()=>focused,
+    documentElement:mkEl(),
+  };
+  const window={addEventListener:addL(), matchMedia:()=>({matches:false,addEventListener(){}}),
+    location:{href:'http://localhost/'}, scrollTo(){}, innerWidth:400};
+  const sb={document,window,navigator,localStorage,fetch,Date:FakeDate,
+    setTimeout,clearTimeout,Promise,console,Intl,JSON,Math,
+    setInterval:(fn,ms)=>{const id=ivId++;intervals.set(id,{fn,ms});return id},
+    clearInterval:(id)=>{intervals.delete(id)},
+  };
+  sb.globalThis=sb; sb.self=sb;
+  if(process.env.DBG) console.log('      [boot] store.driveCache='+(store.driveCache??'(absent)'));
+  vm.createContext(sb);
+  vm.runInContext(code,sb);
+  sandbox=sb;
+  if(process.env.DBG){
+    const _h=sb.driveCacheHit;
+    sb.driveCacheHit=(c,co)=>{const r=_h(c,co);
+      console.log('      [driveCacheHit] cached='+JSON.stringify(c)+' -> '+r); return r;};
+    const _l=sb.loadDriveCache;
+    sb.loadDriveCache=()=>{const r=_l(); console.log('      [loadDriveCache] '+JSON.stringify(r)); return r;};
+  }
+  _sp = sb.selectPort;
+  sb.selectPort = (c)=>{ const r=_sp(c); sb.__lastSelected=r[0].key; return r; };
+  return sb;
+}
+boot();
 
-const tick=()=>new Promise(r=>setTimeout(r,60));
-const settle=async()=>{for(let i=0;i<40;i++)await tick()};
+const tick=()=>new Promise(r=>setTimeout(r,4));
+const settle=async()=>{for(let i=0;i<30;i++)await tick()};
 const emit=(ev)=>{for(const fn of (listeners[ev]??[]))fn()};           // same-task, like the browser
 const fire=async(ev)=>{emit(ev); await settle()};
 const firePair=async(...evs)=>{evs.forEach(emit); await settle()};
@@ -150,7 +160,8 @@ for(const [label,lat,lon,island,port] of CASES[LINE]){
   check(`${label}: port`,     portFor(lat,lon), port);
 }
 
-if(LINE!=='saaremaa'){ console.log(fails?`\n${fails} FAILING`:'\nALL PASS'); process.exit(fails?1:0); }
+if(LINE!=='saaremaa'){ 
+console.log(fails?`\n${fails} FAILING`:'\nALL PASS'); process.exit(fails?1:0); }
 
 // ═══ scenarios ═══════════════════════════════════════════════════════════════
 console.log('\n— initial load —');
@@ -221,6 +232,47 @@ const b6=calls.routes;
 clockOffset+=61000;
 await fire('focus');   // focus while still hidden
 check('no calls while hidden', calls.routes-b6, 0);
+
+console.log('\n— reload (F5) must not spend a paid call —');
+// healthy world again: the previous scenario broke geolocation on purpose
+navigator.geolocation.getCurrentPosition=(ok,err)=>{geoCalls++;
+  if(geoFails) setTimeout(()=>err({code:3}),0); else setTimeout(()=>ok({coords:{...POS}}),0)};
+geoFails=false; visibility='visible'; focused=true; perPort=null; driveSecs=3000;
+POS={latitude:58.60,longitude:23.60};
+clockOffset+=61000;
+
+boot(); await settle();                       // warm load, pays once
+check('warm load spends a call', calls.routes-0>0, true);
+check('cache was persisted to localStorage', typeof store.driveCache==='string', true);
+
+let r=calls.routes;
+boot(); await settle();                       // plain reload, same spot
+check('reload: paid calls', calls.routes-r, 0);
+
+r=calls.routes;
+for(let i=0;i<10;i++){ boot(); await settle(); }   // F5 held down
+check('10 rapid reloads: paid calls', calls.routes-r, 0);
+
+r=calls.routes;
+POS={latitude:58.60005,longitude:23.60003};   // ~6 m of GPS jitter
+boot(); await settle();
+check('reload after 6m jitter: paid calls', calls.routes-r, 0);
+
+r=calls.routes;
+POS={latitude:58.609,longitude:23.60};        // ~1 km on
+boot(); await settle();
+check('reload after moving 1km: paid calls', calls.routes-r, 1);
+
+r=calls.routes;
+clockOffset+=61000;                           // same spot, cache expired
+boot(); await settle();
+check('reload after TTL expiry: paid calls', calls.routes-r, 1);
+
+r=calls.routes;
+store.driveCache='{"not valid json';          // corrupt storage must not break the app
+boot(); await settle();
+check('corrupt cache: still works, pays once', calls.routes-r, 1);
+
 
 console.log(fails?`\n${fails} FAILING`:'\nALL PASS');
 process.exit(fails?1:0);
